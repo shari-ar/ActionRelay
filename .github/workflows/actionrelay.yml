@@ -1,0 +1,63 @@
+name: ActionRelay Batch Worker
+run-name: ActionRelay Batch ${{ inputs.batch_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_id:
+        description: Batch ID
+        required: true
+        type: string
+      batch_payload_b64:
+        description: Base64 encoded request batch payload
+        required: true
+        type: string
+      max_response_bytes_per_request:
+        description: Max response bytes per request
+        required: false
+        default: "65536"
+        type: string
+      request_timeout_ms:
+        description: Per-request timeout in milliseconds
+        required: false
+        default: "8000"
+        type: string
+      worker_concurrency:
+        description: Worker fetch concurrency
+        required: false
+        default: "4"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  process-batch:
+    name: Process Batch ${{ inputs.batch_id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run batch worker
+        env:
+          ACTIONRELAY_BATCH_B64: ${{ inputs.batch_payload_b64 }}
+          ACTIONRELAY_RESULT_PATH: worker/out/result-package.json
+          ACTIONRELAY_MAX_RESPONSE_BYTES: ${{ inputs.max_response_bytes_per_request }}
+          ACTIONRELAY_REQUEST_TIMEOUT_MS: ${{ inputs.request_timeout_ms }}
+          ACTIONRELAY_WORKER_CONCURRENCY: ${{ inputs.worker_concurrency }}
+        run: node worker/run-batch.mjs
+
+      - name: Upload result package
+        uses: actions/upload-artifact@v4
+        with:
+          name: actionrelay-result-${{ inputs.batch_id }}
+          path: worker/out/result-package.json
+          if-no-files-found: error
+          retention-days: 1

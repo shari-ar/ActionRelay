@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://actionrelay.local/schemas/request-batch.v1.json",
+  "title": "ActionRelay Request Batch v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "batch_id",
+    "sent_at",
+    "client",
+    "limits",
+    "requests"
+  ],
+  "properties": {
+    "protocol": {
+      "const": "actionrelay.request_batch.v1"
+    },
+    "batch_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "batch_interval_ms",
+        "route_mode"
+      ],
+      "properties": {
+        "batch_interval_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "route_mode": {
+          "type": "string",
+          "const": "whole_device"
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_response_bytes_per_request",
+        "request_timeout_ms",
+        "worker_concurrency"
+      ],
+      "properties": {
+        "max_response_bytes_per_request": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "request_timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "worker_concurrency": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "requests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "method",
+          "url",
+          "body"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "method": {
+            "type": "string",
+            "minLength": 1
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "encoding",
+                  "data"
+                ],
+                "properties": {
+                  "encoding": {
+                    "type": "string",
+                    "const": "base64"
+                  },
+                  "data": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
