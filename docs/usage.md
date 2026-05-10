@@ -18,7 +18,9 @@ Target commands:
 
 ```sh
 actionrelay init --repo owner/repo --workflow actionrelay.yml
+actionrelay route install --yes --config .actionrelay/config.json
 actionrelay serve --config .actionrelay/config.json
+actionrelay status --config .actionrelay/config.json
 ```
 
 ## Runtime Behavior
@@ -26,6 +28,7 @@ actionrelay serve --config .actionrelay/config.json
 The agent should:
 
 - Capture eligible whole-device requests.
+- Classify requests and reject unsupported traffic locally.
 - Queue requests locally.
 - Send one batch every second if the queue is non-empty.
 - Receive one result package for the batch.
@@ -34,9 +37,10 @@ The agent should:
 
 ## Local Agent Endpoints
 
-Phase 1 exposes a local API from `serve`:
+Phase 2 exposes a local API from `serve`:
 
 - `GET /healthz` for readiness checks.
+- `GET /v1/status` for queue and batch runtime state.
 - `POST /v1/requests` for request submission.
 
 `POST /v1/requests` returns one request result object after the request is
@@ -50,8 +54,12 @@ Manual fetch mode remains useful for testing without installing the route:
 actionrelay fetch https://api.example.com/status
 ```
 
-Phase 1 does not include route install or uninstall commands yet. Those are
-planned for Phase 2.
+Use route lifecycle commands to maintain local route state:
+
+```sh
+actionrelay route install --yes --config .actionrelay/config.json
+actionrelay route uninstall --yes --config .actionrelay/config.json
+```
 
 ## User Expectations
 

@@ -10,40 +10,42 @@ import (
 )
 
 type Config struct {
-	Repo               string `json:"repo"`
-	Workflow           string `json:"workflow"`
-	WorkflowRef        string `json:"workflow_ref"`
-	GitHubTokenEnv     string `json:"github_token_env"`
-	GitHubAPIBaseURL   string `json:"github_api_base_url"`
-	AgentListenAddr    string `json:"agent_listen_addr"`
-	BatchIntervalMS    int    `json:"batch_interval_ms"`
-	RequestTimeoutMS   int    `json:"request_timeout_ms"`
-	MaxResponseBytes   int    `json:"max_response_bytes"`
-	WorkerConcurrency  int    `json:"worker_concurrency"`
-	MaxBatchRequests   int    `json:"max_batch_requests"`
-	MaxBatchBytes      int    `json:"max_batch_bytes"`
-	MaxQueueRequests   int    `json:"max_queue_requests"`
-	RunStartTimeoutSec int    `json:"run_start_timeout_sec"`
-	RunWaitTimeoutSec  int    `json:"run_wait_timeout_sec"`
-	PollIntervalMS     int    `json:"poll_interval_ms"`
+	Repo                string `json:"repo"`
+	Workflow            string `json:"workflow"`
+	WorkflowRef         string `json:"workflow_ref"`
+	GitHubTokenEnv      string `json:"github_token_env"`
+	GitHubAPIBaseURL    string `json:"github_api_base_url"`
+	AgentListenAddr     string `json:"agent_listen_addr"`
+	BatchIntervalMS     int    `json:"batch_interval_ms"`
+	RequestTimeoutMS    int    `json:"request_timeout_ms"`
+	MaxRequestBodyBytes int    `json:"max_request_body_bytes"`
+	MaxResponseBytes    int    `json:"max_response_bytes"`
+	WorkerConcurrency   int    `json:"worker_concurrency"`
+	MaxBatchRequests    int    `json:"max_batch_requests"`
+	MaxBatchBytes       int    `json:"max_batch_bytes"`
+	MaxQueueRequests    int    `json:"max_queue_requests"`
+	RunStartTimeoutSec  int    `json:"run_start_timeout_sec"`
+	RunWaitTimeoutSec   int    `json:"run_wait_timeout_sec"`
+	PollIntervalMS      int    `json:"poll_interval_ms"`
 }
 
 func Default() Config {
 	return Config{
-		WorkflowRef:        "main",
-		GitHubTokenEnv:     "ACTIONRELAY_GITHUB_TOKEN",
-		GitHubAPIBaseURL:   "https://api.github.com",
-		AgentListenAddr:    "127.0.0.1:8787",
-		BatchIntervalMS:    1000,
-		RequestTimeoutMS:   8000,
-		MaxResponseBytes:   65536,
-		WorkerConcurrency:  4,
-		MaxBatchRequests:   32,
-		MaxBatchBytes:      262144,
-		MaxQueueRequests:   256,
-		RunStartTimeoutSec: 120,
-		RunWaitTimeoutSec:  900,
-		PollIntervalMS:     2000,
+		WorkflowRef:         "main",
+		GitHubTokenEnv:      "ACTIONRELAY_GITHUB_TOKEN",
+		GitHubAPIBaseURL:    "https://api.github.com",
+		AgentListenAddr:     "127.0.0.1:8787",
+		BatchIntervalMS:     1000,
+		RequestTimeoutMS:    8000,
+		MaxRequestBodyBytes: 65536,
+		MaxResponseBytes:    65536,
+		WorkerConcurrency:   4,
+		MaxBatchRequests:    32,
+		MaxBatchBytes:       262144,
+		MaxQueueRequests:    256,
+		RunStartTimeoutSec:  120,
+		RunWaitTimeoutSec:   900,
+		PollIntervalMS:      2000,
 	}
 }
 
@@ -59,6 +61,14 @@ func ResolvePath(path string) (string, error) {
 		return filepath.Join(home, strings.TrimPrefix(path, "~/")), nil
 	}
 	return path, nil
+}
+
+func RouteStatePath(configPath string) (string, error) {
+	resolved, err := ResolvePath(configPath)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(resolved), "route-state.json"), nil
 }
 
 func Load(path string) (Config, error) {
@@ -136,6 +146,9 @@ func (c Config) Validate() error {
 	}
 	if c.RequestTimeoutMS <= 0 {
 		return errors.New("request_timeout_ms must be > 0")
+	}
+	if c.MaxRequestBodyBytes <= 0 {
+		return errors.New("max_request_body_bytes must be > 0")
 	}
 	if c.MaxResponseBytes <= 0 {
 		return errors.New("max_response_bytes must be > 0")

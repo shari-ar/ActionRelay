@@ -85,12 +85,11 @@ Command names may change during implementation, but the target flow is:
 
 ```sh
 actionrelay init --repo owner/repo --workflow actionrelay.yml
+actionrelay route install --yes --config .actionrelay/config.json
 actionrelay serve --config .actionrelay/config.json
+actionrelay status --config .actionrelay/config.json
 actionrelay fetch https://api.example.com/status
 ```
-
-Phase 1 intentionally excludes route install or uninstall lifecycle commands. The
-local queue and one-second batch loop are available through `serve`.
 
 Manual fetch mode is available for testing:
 
