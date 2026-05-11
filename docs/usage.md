@@ -36,13 +36,15 @@ The agent should:
 - Enforce strict request-count and batch-byte caps before dispatch.
 - Clamp worker concurrency to a low bounded limit.
 - Apply temporary local backpressure when GitHub Actions runs are delayed.
+- Validate request batches and result packages against protocol shape rules.
+- Mark route state for cleanup if the agent exits while route remains installed.
 - Receive one result package for the batch.
 - Match each result to the original local request.
 - Fail unsupported traffic quickly with a local error.
 
 ## Local Agent Endpoints
 
-Phase 3 exposes a local API from `serve`:
+Phase 4 exposes a local API from `serve`:
 
 - `GET /healthz` for readiness checks.
 - `GET /v1/status` for queue and batch runtime state.

@@ -18,6 +18,8 @@ type State struct {
 	Version       int    `json:"version"`
 	RouteMode     string `json:"route_mode"`
 	Installed     bool   `json:"installed"`
+	CleanupRequired bool `json:"cleanup_required"`
+	CleanupReason string `json:"cleanup_reason,omitempty"`
 	InstalledAt   string `json:"installed_at,omitempty"`
 	UninstalledAt string `json:"uninstalled_at,omitempty"`
 	UpdatedAt     string `json:"updated_at,omitempty"`
@@ -27,9 +29,10 @@ type State struct {
 
 func DefaultState() State {
 	return State{
-		Version:   StateVersion,
-		RouteMode: ModeWholeDevice,
-		Installed: false,
+		Version:         StateVersion,
+		RouteMode:       ModeWholeDevice,
+		Installed:       false,
+		CleanupRequired: false,
 	}
 }
 
@@ -97,4 +100,32 @@ func validate(state State) error {
 		return errors.New("updated_at is required")
 	}
 	return nil
+}
+
+func MarkCleanupRequired(path, reason string) error {
+	state, err := LoadOrDefault(path)
+	if err != nil {
+		return err
+	}
+	if !state.Installed {
+		return nil
+	}
+	state.CleanupRequired = true
+	state.CleanupReason = reason
+	state.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	return Save(path, state)
+}
+
+func ClearCleanupRequired(path string) error {
+	state, err := LoadOrDefault(path)
+	if err != nil {
+		return err
+	}
+	if !state.CleanupRequired && state.CleanupReason == "" {
+		return nil
+	}
+	state.CleanupRequired = false
+	state.CleanupReason = ""
+	state.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	return Save(path, state)
 }

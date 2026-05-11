@@ -58,6 +58,9 @@ func NewDispatcher(cfg config.Config, token string) (*Dispatcher, error) {
 }
 
 func (d *Dispatcher) ProcessBatch(ctx context.Context, batch protocol.RequestBatch) (protocol.ResultPackage, error) {
+	if err := protocol.ValidateRequestBatch(batch); err != nil {
+		return protocol.ResultPackage{}, fmt.Errorf("request batch validation failed: %w", err)
+	}
 	dispatchedAt := time.Now().UTC()
 	if err := d.dispatchBatch(ctx, batch); err != nil {
 		return protocol.ResultPackage{}, err
@@ -72,6 +75,9 @@ func (d *Dispatcher) ProcessBatch(ctx context.Context, batch protocol.RequestBat
 	pkg, err := d.downloadResultPackage(ctx, runID, batch.BatchID)
 	if err != nil {
 		return protocol.ResultPackage{}, err
+	}
+	if err := protocol.ValidateResultPackage(pkg); err != nil {
+		return protocol.ResultPackage{}, fmt.Errorf("result package validation failed: %w", err)
 	}
 	if pkg.Protocol != protocol.ResultPackageProtocol {
 		return protocol.ResultPackage{}, fmt.Errorf("unexpected result protocol %q", pkg.Protocol)
@@ -306,17 +312,27 @@ func parseResultPackageFromZip(payload []byte) (protocol.ResultPackage, error) {
 	if err != nil {
 		return protocol.ResultPackage{}, fmt.Errorf("open artifact zip: %w", err)
 	}
+	foundResultPackage := false
 	for _, file := range reader.File {
 		if path.Base(file.Name) != "result-package.json" {
 			continue
 		}
+		if foundResultPackage {
+			return protocol.ResultPackage{}, errors.New("result artifact contains multiple result-package.json files")
+		}
+		if file.UncompressedSize64 > 10<<20 {
+			return protocol.ResultPackage{}, errors.New("result-package.json exceeds maximum allowed size")
+		}
+		foundResultPackage = true
 		stream, err := file.Open()
 		if err != nil {
 			return protocol.ResultPackage{}, fmt.Errorf("open result file: %w", err)
 		}
 		defer stream.Close()
 		var result protocol.ResultPackage
-		if err := json.NewDecoder(stream).Decode(&result); err != nil {
+		decoder := json.NewDecoder(io.LimitReader(stream, 10<<20))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&result); err != nil {
 			return protocol.ResultPackage{}, fmt.Errorf("decode result package: %w", err)
 		}
 		return result, nil

@@ -137,6 +137,9 @@ func runRouteInstall(args []string) error {
 	}
 	if listenAddr != "" {
 		cfg.AgentListenAddr = listenAddr
+		if err := cfg.Validate(); err != nil {
+			return err
+		}
 	}
 	statePath, err := config.RouteStatePath(configPath)
 	if err != nil {
@@ -151,6 +154,8 @@ func runRouteInstall(args []string) error {
 	state.Version = route.StateVersion
 	state.RouteMode = route.ModeWholeDevice
 	state.Installed = true
+	state.CleanupRequired = false
+	state.CleanupReason = ""
 	state.InstalledAt = now
 	state.UninstalledAt = ""
 	state.UpdatedAt = now
@@ -187,11 +192,16 @@ func runRouteUninstall(args []string) error {
 	if err != nil {
 		return err
 	}
+	if !state.Installed && !state.CleanupRequired {
+		return errors.New("route is already uninstalled")
+	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	state.Version = route.StateVersion
 	state.RouteMode = route.ModeWholeDevice
 	state.Installed = false
+	state.CleanupRequired = false
+	state.CleanupReason = ""
 	state.UninstalledAt = now
 	state.UpdatedAt = now
 	state.LastAction = "uninstall"
@@ -313,11 +323,18 @@ func runServe(args []string) error {
 	}
 	if listenAddr != "" {
 		cfg.AgentListenAddr = listenAddr
+		if err := cfg.Validate(); err != nil {
+			return err
+		}
 	}
 	routeStatePath, err := config.RouteStatePath(configPath)
 	if err != nil {
 		return err
 	}
+	cleanupReason := "agent stopped while route remained installed; run route uninstall --yes"
+	defer func() {
+		_ = route.MarkCleanupRequired(routeStatePath, cleanupReason)
+	}()
 	token, err := cfg.Token()
 	if err != nil {
 		return err
@@ -411,6 +428,9 @@ func runServe(args []string) error {
 		Addr:              cfg.AgentListenAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+	if err := route.ClearCleanupRequired(routeStatePath); err != nil {
+		return err
 	}
 
 	go func() {

@@ -27,6 +27,13 @@ The route agent should require local authorization for route install/uninstall,
 bind any control API to loopback only, and fail closed if the route cannot be
 removed cleanly.
 
+Current implementation safeguards:
+
+- Enforces loopback-only `agent_listen_addr` validation.
+- Marks route state as `cleanup_required` when the agent stops while route mode
+  remains installed.
+- Clears stale cleanup flags when a healthy local agent starts.
+
 ## URL And Network Guardrails
 
 The worker must revalidate every request and reject unsafe destinations:
@@ -37,6 +44,15 @@ The worker must revalidate every request and reject unsafe destinations:
 - Cloud metadata service addresses.
 - Redirects into blocked destinations.
 
+Current implementation safeguards:
+
+- Validates request-batch shape before processing.
+- Rejects localhost, loopback, private, link-local, multicast, and metadata
+  service destinations.
+- Resolves DNS before fetch and rejects requests when any resolved address is
+  blocked.
+- Follows redirects manually and reapplies destination guardrails on each hop.
+
 ## Abuse Prevention
 
 Recommended controls:
@@ -46,3 +62,12 @@ Recommended controls:
 - Short workflow timeouts.
 - Small response caps.
 - Clear audit trail through batch IDs and workflow runs.
+
+Current implementation safeguards:
+
+- Redacts sensitive response headers (`set-cookie`, authentication challenge
+  headers) before writing result artifacts.
+- Redacts common credential and token patterns from worker and client error
+  messages.
+- Verifies result package structure, request ID coverage, and batch ID match
+  before releasing responses to local callers.

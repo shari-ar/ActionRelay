@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,6 +150,9 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.GitHubAPIBaseURL) == "" {
 		return errors.New("github_api_base_url is required")
 	}
+	if err := validateLoopbackListenAddr(c.AgentListenAddr); err != nil {
+		return err
+	}
 	if c.BatchIntervalMS <= 0 {
 		return errors.New("batch_interval_ms must be > 0")
 	}
@@ -193,6 +197,24 @@ func (c Config) Validate() error {
 	}
 	if c.PollIntervalMS <= 0 {
 		return errors.New("poll_interval_ms must be > 0")
+	}
+	return nil
+}
+
+func validateLoopbackListenAddr(listenAddr string) error {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(listenAddr))
+	if err != nil {
+		return fmt.Errorf("agent_listen_addr must be host:port")
+	}
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ipAddr := net.ParseIP(host)
+	if ipAddr == nil {
+		return fmt.Errorf("agent_listen_addr host must be localhost or a loopback IP")
+	}
+	if !ipAddr.IsLoopback() {
+		return fmt.Errorf("agent_listen_addr host must be loopback-only")
 	}
 	return nil
 }

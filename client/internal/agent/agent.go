@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -22,6 +24,7 @@ const (
 	maxWorkerConcurrencyLimit = 8
 	safeCacheStatusMin        = 200
 	safeCacheStatusMax        = 299
+	redactedValue             = "[REDACTED]"
 )
 
 var allowedMethods = map[string]struct{}{
@@ -43,6 +46,46 @@ var rejectedHeaders = map[string]struct{}{
 	"proxy-connection":    {},
 	"proxy-authenticate":  {},
 	"proxy-authorization": {},
+}
+
+var sensitiveHeaderNames = map[string]struct{}{
+	"authorization":       {},
+	"proxy-authorization": {},
+	"cookie":              {},
+	"set-cookie":          {},
+	"x-api-key":           {},
+}
+
+var metadataBlockedHosts = map[string]struct{}{
+	"metadata":                  {},
+	"metadata.google.internal":  {},
+	"metadata.google":           {},
+	"metadata.azure.internal":   {},
+	"metadata.aliyun.internal":  {},
+	"instance-data.ec2.internal": {},
+}
+
+var metadataBlockedIPs = func() map[netip.Addr]struct{} {
+	raw := []string{
+		"169.254.169.254",
+		"100.100.100.200",
+		"192.0.0.192",
+		"192.0.0.170",
+	}
+	parsed := make(map[netip.Addr]struct{}, len(raw))
+	for _, candidate := range raw {
+		addr, err := netip.ParseAddr(candidate)
+		if err != nil {
+			continue
+		}
+		parsed[addr] = struct{}{}
+	}
+	return parsed
+}()
+
+var secretRedactionPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)(authorization|proxy-authorization|cookie|set-cookie|x-api-key)\s*[:=]\s*[^,\s;]+`),
+	regexp.MustCompile(`(?i)(token|access_token|id_token|client_secret|password)=([^&\s]+)`),
 }
 
 type Dispatcher interface {
@@ -352,8 +395,15 @@ func (a *Agent) dispatchBatch(ctx context.Context, requests []pendingRequest) {
 		Requests: make([]protocol.RequestItem, 0, len(units)),
 	}
 
+	requestIDs := make([]string, 0, len(units))
 	for _, unit := range units {
 		batch.Requests = append(batch.Requests, unit.primary.request)
+		requestIDs = append(requestIDs, unit.primary.request.RequestID)
+	}
+
+	if err := protocol.ValidateRequestBatch(batch); err != nil {
+		a.failUnits(units, "WORKER_ERROR", "request batch validation failed: "+err.Error())
+		return
 	}
 
 	batchSize, err := batchSizeBytes(batch)
@@ -379,6 +429,11 @@ func (a *Agent) dispatchBatch(ctx context.Context, requests []pendingRequest) {
 		return
 	}
 	a.recordDispatchSuccess()
+	if err := protocol.VerifyResultPackageForBatch(resultPackage, batchID, requestIDs); err != nil {
+		a.recordDispatchError(err)
+		a.failUnits(units, "RESULT_PACKAGE_NOT_FOUND", "result package verification failed: "+err.Error())
+		return
+	}
 
 	resultByID := make(map[string]protocol.RequestResult, len(resultPackage.Results))
 	for _, result := range resultPackage.Results {
@@ -390,6 +445,7 @@ func (a *Agent) dispatchBatch(ctx context.Context, requests []pendingRequest) {
 		if !exists {
 			primaryResult = errorResult(unit.primary.request.RequestID, "RESULT_PACKAGE_NOT_FOUND", "request result missing from package")
 		}
+		primaryResult = sanitizeResult(primaryResult)
 		a.recordResult(primaryResult)
 		unit.primary.resultCh <- primaryResult
 
@@ -507,6 +563,15 @@ func classifyRequest(request protocol.RequestItem, bodyBytes, maxBodyBytes int) 
 			Message: "only http and https URLs are supported",
 		}
 	}
+	if parsedURL.User != nil {
+		return &classificationError{
+			Code:    "URL_REJECTED",
+			Message: "url credentials are not allowed",
+		}
+	}
+	if guardrailFailure := validateDestinationHost(parsedURL); guardrailFailure != nil {
+		return guardrailFailure
+	}
 
 	for key, value := range request.Headers {
 		if _, blocked := rejectedHeaders[key]; blocked {
@@ -579,7 +644,7 @@ func errorResult(requestID, code, message string) protocol.RequestResult {
 		Response:  nil,
 		Error: &protocol.ResultError{
 			Code:    code,
-			Message: message,
+			Message: redactSecretText(message),
 		},
 	}
 }
@@ -654,6 +719,67 @@ func cloneHeaders(headers map[string]string) map[string]string {
 	return cloned
 }
 
+func sanitizeResult(result protocol.RequestResult) protocol.RequestResult {
+	sanitized := cloneResultForRequest(result, result.RequestID)
+	if sanitized.Error != nil {
+		sanitized.Error.Message = redactSecretText(sanitized.Error.Message)
+	}
+	if sanitized.Response != nil {
+		sanitized.Response.Headers = redactSensitiveHeaders(sanitized.Response.Headers)
+		sanitized.Response.URL = redactURLCredentials(sanitized.Response.URL)
+	}
+	return sanitized
+}
+
+func redactSensitiveHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return headers
+	}
+	safe := make(map[string]string, len(headers))
+	for key, value := range headers {
+		lower := strings.ToLower(strings.TrimSpace(key))
+		if _, sensitive := sensitiveHeaderNames[lower]; sensitive {
+			safe[key] = redactedValue
+			continue
+		}
+		safe[key] = value
+	}
+	return safe
+}
+
+func redactURLCredentials(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	if parsed.User == nil {
+		return rawURL
+	}
+	parsed.User = nil
+	return parsed.String()
+}
+
+func redactSecretText(text string) string {
+	redacted := text
+	for _, pattern := range secretRedactionPatterns {
+		redacted = pattern.ReplaceAllStringFunc(redacted, func(match string) string {
+			separator := ":"
+			if strings.Contains(match, "=") {
+				separator = "="
+			}
+			parts := strings.SplitN(match, separator, 2)
+			if len(parts) == 0 {
+				return redactedValue
+			}
+			if separator == "=" {
+				return strings.TrimSpace(parts[0]) + separator + redactedValue
+			}
+			return strings.TrimSpace(parts[0]) + separator + " " + redactedValue
+		})
+	}
+	return redacted
+}
+
 func batchSizeForPending(items []pendingRequest, settings Settings) (int, error) {
 	requests := make([]protocol.RequestItem, 0, len(items))
 	for _, item := range items {
@@ -709,6 +835,66 @@ func stableHeaders(headers map[string]string) map[string]string {
 		stable[key] = headers[key]
 	}
 	return stable
+}
+
+func validateDestinationHost(parsedURL *url.URL) *classificationError {
+	host := strings.ToLower(strings.TrimSpace(parsedURL.Hostname()))
+	if host == "" {
+		return &classificationError{
+			Code:    "URL_REJECTED",
+			Message: "url host is required",
+		}
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return &classificationError{
+			Code:    "REQUEST_BLOCKED",
+			Message: "localhost destinations are blocked",
+		}
+	}
+	if _, blocked := metadataBlockedHosts[host]; blocked {
+		return &classificationError{
+			Code:    "REQUEST_BLOCKED",
+			Message: "metadata destinations are blocked",
+		}
+	}
+	ipAddr, err := netip.ParseAddr(host)
+	if err != nil {
+		return nil
+	}
+	if blocked, reason := isBlockedIPAddress(ipAddr); blocked {
+		return &classificationError{
+			Code:    "REQUEST_BLOCKED",
+			Message: reason,
+		}
+	}
+	return nil
+}
+
+func isBlockedIPAddress(ipAddr netip.Addr) (bool, string) {
+	if ipAddr.IsUnspecified() {
+		return true, "unspecified destinations are blocked"
+	}
+	if ipAddr.IsLoopback() {
+		return true, "loopback destinations are blocked"
+	}
+	if ipAddr.IsPrivate() {
+		return true, "private network destinations are blocked"
+	}
+	if ipAddr.IsLinkLocalUnicast() || ipAddr.IsLinkLocalMulticast() {
+		return true, "link-local destinations are blocked"
+	}
+	if ipAddr.IsMulticast() {
+		return true, "multicast destinations are blocked"
+	}
+	if isMetadataIPAddress(ipAddr) {
+		return true, "metadata service destinations are blocked"
+	}
+	return false, ""
+}
+
+func isMetadataIPAddress(ipAddr netip.Addr) bool {
+	_, blocked := metadataBlockedIPs[ipAddr]
+	return blocked
 }
 
 func toBase64(body []byte) string {
@@ -832,7 +1018,7 @@ func (a *Agent) recordDispatchSuccess() {
 func (a *Agent) recordDispatchError(err error) {
 	a.mu.Lock()
 	a.runtime.DispatchInFlight = false
-	a.runtime.LastDispatchError = err.Error()
+	a.runtime.LastDispatchError = redactSecretText(err.Error())
 	a.mu.Unlock()
 }
 
@@ -902,12 +1088,13 @@ func (a *Agent) rejectPendingForBackpressure(pending []pendingRequest, reason st
 }
 
 func (a *Agent) failUnits(units []dispatchUnit, code, message string) {
+	safeMessage := redactSecretText(message)
 	for _, unit := range units {
-		primaryResult := errorResult(unit.primary.request.RequestID, code, message)
+		primaryResult := errorResult(unit.primary.request.RequestID, code, safeMessage)
 		a.recordResult(primaryResult)
 		unit.primary.resultCh <- primaryResult
 		for _, duplicate := range unit.duplicates {
-			duplicateResult := errorResult(duplicate.request.RequestID, code, message)
+			duplicateResult := errorResult(duplicate.request.RequestID, code, safeMessage)
 			a.recordResult(duplicateResult)
 			duplicate.resultCh <- duplicateResult
 		}
