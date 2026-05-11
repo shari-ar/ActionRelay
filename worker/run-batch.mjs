@@ -6,6 +6,7 @@ const RESULT_PACKAGE_PROTOCOL = "actionrelay.result_package.v1";
 const DEFAULT_MAX_RESPONSE_BYTES = 65536;
 const DEFAULT_REQUEST_TIMEOUT_MS = 8000;
 const DEFAULT_WORKER_CONCURRENCY = 4;
+const MAX_WORKER_CONCURRENCY = 8;
 
 async function main() {
   const batchPayload = process.env.ACTIONRELAY_BATCH_B64;
@@ -36,6 +37,7 @@ async function main() {
       DEFAULT_WORKER_CONCURRENCY,
     ),
   };
+  limits.workerConcurrency = clampConcurrency(limits.workerConcurrency);
 
   const results = await processRequests(batch.requests, limits);
   const resultPackage = {
@@ -208,6 +210,10 @@ function asInt(primary, secondary, fallback) {
     }
   }
   return fallback;
+}
+
+function clampConcurrency(value) {
+  return Math.max(1, Math.min(MAX_WORKER_CONCURRENCY, value));
 }
 
 main().catch((error) => {

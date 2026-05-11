@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const maxWorkerConcurrencyLimit = 8
+
 type Config struct {
 	Repo                string `json:"repo"`
 	Workflow            string `json:"workflow"`
@@ -24,9 +26,12 @@ type Config struct {
 	MaxBatchRequests    int    `json:"max_batch_requests"`
 	MaxBatchBytes       int    `json:"max_batch_bytes"`
 	MaxQueueRequests    int    `json:"max_queue_requests"`
-	RunStartTimeoutSec  int    `json:"run_start_timeout_sec"`
-	RunWaitTimeoutSec   int    `json:"run_wait_timeout_sec"`
-	PollIntervalMS      int    `json:"poll_interval_ms"`
+	CacheTTLMS          int    `json:"cache_ttl_ms"`
+	CacheMaxEntries     int    `json:"cache_max_entries"`
+	BackpressureCooldownMS int `json:"backpressure_cooldown_ms"`
+	RunStartTimeoutSec     int `json:"run_start_timeout_sec"`
+	RunWaitTimeoutSec      int `json:"run_wait_timeout_sec"`
+	PollIntervalMS         int `json:"poll_interval_ms"`
 }
 
 func Default() Config {
@@ -43,6 +48,9 @@ func Default() Config {
 		MaxBatchRequests:    32,
 		MaxBatchBytes:       262144,
 		MaxQueueRequests:    256,
+		CacheTTLMS:          10000,
+		CacheMaxEntries:     256,
+		BackpressureCooldownMS: 15000,
 		RunStartTimeoutSec:  120,
 		RunWaitTimeoutSec:   900,
 		PollIntervalMS:      2000,
@@ -156,6 +164,9 @@ func (c Config) Validate() error {
 	if c.WorkerConcurrency <= 0 {
 		return errors.New("worker_concurrency must be > 0")
 	}
+	if c.WorkerConcurrency > maxWorkerConcurrencyLimit {
+		return fmt.Errorf("worker_concurrency must be <= %d", maxWorkerConcurrencyLimit)
+	}
 	if c.MaxBatchRequests <= 0 {
 		return errors.New("max_batch_requests must be > 0")
 	}
@@ -164,6 +175,15 @@ func (c Config) Validate() error {
 	}
 	if c.MaxQueueRequests <= 0 {
 		return errors.New("max_queue_requests must be > 0")
+	}
+	if c.CacheTTLMS < 0 {
+		return errors.New("cache_ttl_ms must be >= 0")
+	}
+	if c.CacheMaxEntries < 0 {
+		return errors.New("cache_max_entries must be >= 0")
+	}
+	if c.BackpressureCooldownMS <= 0 {
+		return errors.New("backpressure_cooldown_ms must be > 0")
 	}
 	if c.RunStartTimeoutSec <= 0 {
 		return errors.New("run_start_timeout_sec must be > 0")

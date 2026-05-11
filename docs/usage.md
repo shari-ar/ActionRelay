@@ -30,14 +30,19 @@ The agent should:
 - Capture eligible whole-device requests.
 - Classify requests and reject unsupported traffic locally.
 - Queue requests locally.
+- Deduplicate safe identical requests in each batch cycle.
+- Serve cache hits for safe responses when still fresh.
 - Send one batch every second if the queue is non-empty.
+- Enforce strict request-count and batch-byte caps before dispatch.
+- Clamp worker concurrency to a low bounded limit.
+- Apply temporary local backpressure when GitHub Actions runs are delayed.
 - Receive one result package for the batch.
 - Match each result to the original local request.
 - Fail unsupported traffic quickly with a local error.
 
 ## Local Agent Endpoints
 
-Phase 2 exposes a local API from `serve`:
+Phase 3 exposes a local API from `serve`:
 
 - `GET /healthz` for readiness checks.
 - `GET /v1/status` for queue and batch runtime state.

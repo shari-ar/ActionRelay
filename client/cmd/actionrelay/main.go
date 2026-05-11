@@ -58,7 +58,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println("ActionRelay Phase 2")
+	fmt.Println("ActionRelay Phase 3")
 	fmt.Println("Usage:")
 	fmt.Println("  actionrelay init --repo owner/repo --workflow actionrelay.yml")
 	fmt.Println("  actionrelay route install --yes [--config .actionrelay/config.json]")
@@ -337,6 +337,9 @@ func runServe(args []string) error {
 		MaxBatchRequests:    cfg.MaxBatchRequests,
 		MaxBatchBytes:       cfg.MaxBatchBytes,
 		MaxQueueRequests:    cfg.MaxQueueRequests,
+		CacheTTL:            time.Duration(cfg.CacheTTLMS) * time.Millisecond,
+		CacheMaxEntries:     cfg.CacheMaxEntries,
+		BackpressureCooldown: time.Duration(cfg.BackpressureCooldownMS) * time.Millisecond,
 	})
 	if err != nil {
 		return err
