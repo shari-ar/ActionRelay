@@ -37,3 +37,28 @@ Recommended tests:
 - Protocol schema tests.
 - Result package parsing tests.
 - Negative tests for oversized batches, timeouts, and missing results.
+
+## CI Automation
+
+GitHub Actions workflow `.github/workflows/ci.yml` validates:
+
+- Go client build and tests from `client/`.
+- Go formatting consistency via `gofmt`.
+- Worker syntax and smoke behavior checks.
+- Schema structure validation in `schemas/`.
+- Documentation integrity checks in `docs/`.
+
+## Release Automation
+
+GitHub Actions workflow `.github/workflows/release.yml` publishes versioned
+releases from semantic version tags.
+
+- Push a tag formatted like `v1.2.3` to trigger a release.
+- Cross-platform client binaries are built from `client/cmd/actionrelay`.
+- Release archives and `SHA256SUMS.txt` are attached to the GitHub Release.
+
+Local release build helper:
+
+```sh
+./scripts/release/build-client-binaries.sh v1.2.3
+```

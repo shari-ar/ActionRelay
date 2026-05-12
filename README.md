@@ -106,6 +106,7 @@ actionrelay fetch https://api.example.com/status
 - `docs/performance.md` defines resource budgets and latency tradeoffs.
 - `docs/security.md` covers local routing, sensitive traffic, and guardrails.
 - `docs/development.md` outlines contributor conventions.
+- `docs/release.md` describes CI and versioned release automation.
 - `docs/roadmap.md` tracks implementation phases.
 
 ## Project Status

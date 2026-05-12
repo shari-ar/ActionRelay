@@ -12,6 +12,7 @@ and receives one compact result package back.
 - `performance.md`: One-second batching, resource budgets, and latency limits.
 - `security.md`: Local routing, sensitive traffic, and guardrails.
 - `development.md`: Project structure, tests, and implementation rules.
+- `release.md`: Build, CI, checksum, and release automation process.
 - `roadmap.md`: Phased delivery plan.
 
 ## Reading Order
@@ -23,4 +24,5 @@ and receives one compact result package back.
 5. `security.md`
 6. `usage.md`
 7. `development.md`
-8. `roadmap.md`
+8. `release.md`
+9. `roadmap.md`

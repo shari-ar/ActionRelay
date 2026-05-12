@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    name: Client (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: client/go.mod
+
+      - name: Verify client build and tests
+        working-directory: client
+        run: |
+          go test ./...
+
+      - name: Verify gofmt
+        working-directory: client
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "${unformatted}" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "${unformatted}"
+            exit 1
+          fi
+
+  worker:
+    name: Worker (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Static syntax check
+        run: node --check worker/run-batch.mjs
+
+      - name: Worker smoke test
+        run: node scripts/ci/smoke-worker.mjs
+
+  schemas-and-docs:
+    name: Schemas and Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Validate JSON schemas
+        run: node scripts/ci/validate-schemas.mjs
+
+      - name: Validate documentation
+        run: node scripts/ci/validate-docs.mjs
