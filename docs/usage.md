@@ -12,6 +12,322 @@ as a batch, and returned as one result package.
 - Local ActionRelay Go route agent.
 - Permission to install or configure a local route on the device.
 
+## First-Time Client Setup
+
+The steps below assume the ActionRelay workflow is already present in the target
+GitHub repository and GitHub Actions is enabled for that repository.
+
+Every user needs to:
+
+1. Download the correct release asset for their operating system and CPU.
+2. Extract the archive into a local folder.
+3. Create a GitHub personal access token (PAT) with the required permissions.
+4. Set `ACTIONRELAY_GITHUB_TOKEN` on the machine that will run the client.
+5. Initialize ActionRelay against the repository that hosts the workflow.
+6. Run a manual fetch test before starting the local route agent.
+
+### Pick The Correct Release Asset
+
+Open the repository on GitHub, open `Releases`, then open the latest release.
+Under `Assets`, download the archive that matches the local machine.
+
+- Windows x64: `actionrelay_<version>_windows_amd64.zip` or
+  `actionrelay_<version>_windows_amd64.tar.gz`
+- Windows ARM64: `actionrelay_<version>_windows_arm64.zip` or
+  `actionrelay_<version>_windows_arm64.tar.gz`
+- macOS Intel: `actionrelay_<version>_darwin_amd64.tar.gz`
+- macOS Apple Silicon: `actionrelay_<version>_darwin_arm64.tar.gz`
+- Linux x64: `actionrelay_<version>_linux_amd64.tar.gz`
+- Linux ARM64: `actionrelay_<version>_linux_arm64.tar.gz`
+
+If the user is not sure which architecture to choose:
+
+- Windows: open `Settings` -> `System` -> `About` -> `System type`
+- macOS: run `uname -m`
+- Linux: run `uname -m`
+
+### Windows Setup
+
+1. Open the latest GitHub release and download:
+   - `windows_amd64` for almost all Intel/AMD Windows PCs
+   - `windows_arm64` only for Windows on ARM devices
+2. Create a folder such as `C:\ActionRelay`.
+3. Extract the downloaded archive into `C:\ActionRelay`.
+   - For `.zip`, right-click the file and choose `Extract All`
+   - For `.tar.gz`, use Windows built-in extraction if available, or 7-Zip
+4. Confirm the extracted folder contains:
+   - `actionrelay.exe`
+   - `README.md`
+5. Open PowerShell.
+6. Move into the extracted folder:
+
+```powershell
+cd C:\ActionRelay
+```
+
+7. Confirm the binary is present:
+
+```powershell
+dir
+```
+
+8. Create a fine-grained GitHub PAT for the repository that hosts the
+   ActionRelay workflow.
+9. Set the token for the current PowerShell session:
+
+```powershell
+$env:ACTIONRELAY_GITHUB_TOKEN="your_token_here"
+```
+
+10. Persist the token for the current Windows user:
+
+```powershell
+[System.Environment]::SetEnvironmentVariable("ACTIONRELAY_GITHUB_TOKEN", "your_token_here", "User")
+```
+
+11. Close PowerShell, open a new PowerShell window, then verify the token:
+
+```powershell
+[System.Environment]::GetEnvironmentVariable("ACTIONRELAY_GITHUB_TOKEN", "User")
+```
+
+12. Return to the client folder:
+
+```powershell
+cd C:\ActionRelay
+```
+
+13. Initialize ActionRelay with the repository that contains the workflow:
+
+```powershell
+.\actionrelay.exe init --repo owner/repo --workflow actionrelay.yml
+```
+
+14. Run a manual test before route mode:
+
+```powershell
+.\actionrelay.exe fetch https://api.github.com
+```
+
+15. If the manual test succeeds, install local route state:
+
+```powershell
+.\actionrelay.exe route install --yes --config .actionrelay/config.json
+```
+
+16. Start the local route agent:
+
+```powershell
+.\actionrelay.exe serve --config .actionrelay/config.json
+```
+
+17. In a second PowerShell window, check runtime status:
+
+```powershell
+cd C:\ActionRelay
+.\actionrelay.exe status --config .actionrelay/config.json
+```
+
+18. When finished, remove route state:
+
+```powershell
+.\actionrelay.exe route uninstall --yes --config .actionrelay/config.json
+```
+
+### macOS Setup
+
+1. Open the latest GitHub release and download:
+   - `darwin_amd64` for Intel Macs
+   - `darwin_arm64` for Apple Silicon Macs
+2. Create a local folder such as `~/actionrelay`.
+3. Extract the archive into that folder:
+
+```sh
+mkdir -p ~/actionrelay
+tar -xzf ~/Downloads/actionrelay_<version>_darwin_<arch>.tar.gz -C ~/actionrelay
+```
+
+4. Open Terminal and move into the extracted folder:
+
+```sh
+cd ~/actionrelay
+```
+
+5. Confirm the binary is present:
+
+```sh
+ls -l
+```
+
+6. Make sure the binary is executable:
+
+```sh
+chmod +x ./actionrelay
+```
+
+7. Create a fine-grained GitHub PAT for the repository that hosts the
+   ActionRelay workflow.
+8. Set the token for the current shell session:
+
+```sh
+export ACTIONRELAY_GITHUB_TOKEN='your_token_here'
+```
+
+9. Persist the token for future shells:
+   - For `zsh`:
+
+```sh
+echo "export ACTIONRELAY_GITHUB_TOKEN='your_token_here'" >> ~/.zshrc
+source ~/.zshrc
+```
+
+   - For `bash`:
+
+```sh
+echo "export ACTIONRELAY_GITHUB_TOKEN='your_token_here'" >> ~/.bashrc
+source ~/.bashrc
+```
+
+10. Verify the token is available:
+
+```sh
+echo "$ACTIONRELAY_GITHUB_TOKEN"
+```
+
+11. Initialize ActionRelay:
+
+```sh
+./actionrelay init --repo owner/repo --workflow actionrelay.yml
+```
+
+12. Run a manual fetch test:
+
+```sh
+./actionrelay fetch https://api.github.com
+```
+
+13. If the manual test succeeds, install local route state:
+
+```sh
+./actionrelay route install --yes --config .actionrelay/config.json
+```
+
+14. Start the local route agent:
+
+```sh
+./actionrelay serve --config .actionrelay/config.json
+```
+
+15. In a second Terminal window, check runtime status:
+
+```sh
+cd ~/actionrelay
+./actionrelay status --config .actionrelay/config.json
+```
+
+16. When finished, remove route state:
+
+```sh
+./actionrelay route uninstall --yes --config .actionrelay/config.json
+```
+
+### Linux Setup
+
+1. Open the latest GitHub release and download:
+   - `linux_amd64` for most x64 Linux systems
+   - `linux_arm64` for ARM64 Linux systems
+2. Create a local folder such as `~/actionrelay`.
+3. Extract the archive into that folder:
+
+```sh
+mkdir -p ~/actionrelay
+tar -xzf ~/Downloads/actionrelay_<version>_linux_<arch>.tar.gz -C ~/actionrelay
+```
+
+4. Open a terminal and move into the extracted folder:
+
+```sh
+cd ~/actionrelay
+```
+
+5. Confirm the binary is present:
+
+```sh
+ls -l
+```
+
+6. Make sure the binary is executable:
+
+```sh
+chmod +x ./actionrelay
+```
+
+7. Create a fine-grained GitHub PAT for the repository that hosts the
+   ActionRelay workflow.
+8. Set the token for the current shell session:
+
+```sh
+export ACTIONRELAY_GITHUB_TOKEN='your_token_here'
+```
+
+9. Persist the token for future shells:
+   - For `bash`:
+
+```sh
+echo "export ACTIONRELAY_GITHUB_TOKEN='your_token_here'" >> ~/.bashrc
+source ~/.bashrc
+```
+
+   - For `zsh`:
+
+```sh
+echo "export ACTIONRELAY_GITHUB_TOKEN='your_token_here'" >> ~/.zshrc
+source ~/.zshrc
+```
+
+10. Verify the token is available:
+
+```sh
+echo "$ACTIONRELAY_GITHUB_TOKEN"
+```
+
+11. Initialize ActionRelay:
+
+```sh
+./actionrelay init --repo owner/repo --workflow actionrelay.yml
+```
+
+12. Run a manual fetch test:
+
+```sh
+./actionrelay fetch https://api.github.com
+```
+
+13. If the manual test succeeds, install local route state:
+
+```sh
+./actionrelay route install --yes --config .actionrelay/config.json
+```
+
+14. Start the local route agent:
+
+```sh
+./actionrelay serve --config .actionrelay/config.json
+```
+
+15. In a second terminal, check runtime status:
+
+```sh
+cd ~/actionrelay
+./actionrelay status --config .actionrelay/config.json
+```
+
+16. When finished, remove route state:
+
+```sh
+./actionrelay route uninstall --yes --config .actionrelay/config.json
+```
+
 ## GitHub Token Setup
 
 ActionRelay requires a GitHub personal access token (PAT) on the machine that
