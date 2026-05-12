@@ -29,7 +29,9 @@ for target in "${targets[@]}"; do
   archive_ext="tar.gz"
   if [[ "${GOOS}" == "windows" ]]; then
     binary_name="actionrelay.exe"
-    archive_ext="zip"
+    if command -v zip >/dev/null 2>&1; then
+      archive_ext="zip"
+    fi
   fi
 
   staging_dir="${DIST_DIR}/actionrelay_${VERSION}_${GOOS}_${GOARCH}"
