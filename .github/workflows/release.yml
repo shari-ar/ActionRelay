@@ -21,6 +21,11 @@ jobs:
         with:
           go-version-file: client/go.mod
 
+      - name: Install archive tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip
+
       - name: Build cross-platform binaries and checksums
         run: ./scripts/release/build-client-binaries.sh "${GITHUB_REF_NAME}"
 
