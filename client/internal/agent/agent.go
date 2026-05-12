@@ -7,8 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net/netip"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"sort"
@@ -57,11 +57,11 @@ var sensitiveHeaderNames = map[string]struct{}{
 }
 
 var metadataBlockedHosts = map[string]struct{}{
-	"metadata":                  {},
-	"metadata.google.internal":  {},
-	"metadata.google":           {},
-	"metadata.azure.internal":   {},
-	"metadata.aliyun.internal":  {},
+	"metadata":                   {},
+	"metadata.google.internal":   {},
+	"metadata.google":            {},
+	"metadata.azure.internal":    {},
+	"metadata.aliyun.internal":   {},
 	"instance-data.ec2.internal": {},
 }
 
@@ -93,18 +93,18 @@ type Dispatcher interface {
 }
 
 type Settings struct {
-	BatchInterval         time.Duration
-	RequestTimeout        time.Duration
-	MaxRequestBodyBytes   int
-	MaxResponseBytes      int
-	WorkerConcurrency     int
-	MaxWorkerConcurrency  int
-	MaxBatchRequests      int
-	MaxBatchBytes         int
-	MaxQueueRequests      int
-	CacheTTL              time.Duration
-	CacheMaxEntries       int
-	BackpressureCooldown  time.Duration
+	BatchInterval        time.Duration
+	RequestTimeout       time.Duration
+	MaxRequestBodyBytes  int
+	MaxResponseBytes     int
+	WorkerConcurrency    int
+	MaxWorkerConcurrency int
+	MaxBatchRequests     int
+	MaxBatchBytes        int
+	MaxQueueRequests     int
+	CacheTTL             time.Duration
+	CacheMaxEntries      int
+	BackpressureCooldown time.Duration
 }
 
 type SubmitRequest struct {
@@ -687,7 +687,7 @@ func cloneResultForRequest(result protocol.RequestResult, requestID string) prot
 	if result.Response != nil {
 		headers := cloneHeaders(result.Response.Headers)
 		cloned.Response = &protocol.HTTPResponse{
-			Status: result.Response.Status,
+			Status:  result.Response.Status,
 			Headers: headers,
 			Body: protocol.ResponseBody{
 				Encoding:  result.Response.Body.Encoding,

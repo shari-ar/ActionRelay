@@ -15,16 +15,16 @@ const (
 )
 
 type State struct {
-	Version       int    `json:"version"`
-	RouteMode     string `json:"route_mode"`
-	Installed     bool   `json:"installed"`
-	CleanupRequired bool `json:"cleanup_required"`
-	CleanupReason string `json:"cleanup_reason,omitempty"`
-	InstalledAt   string `json:"installed_at,omitempty"`
-	UninstalledAt string `json:"uninstalled_at,omitempty"`
-	UpdatedAt     string `json:"updated_at,omitempty"`
-	ListenAddr    string `json:"listen_addr,omitempty"`
-	LastAction    string `json:"last_action,omitempty"`
+	Version         int    `json:"version"`
+	RouteMode       string `json:"route_mode"`
+	Installed       bool   `json:"installed"`
+	CleanupRequired bool   `json:"cleanup_required"`
+	CleanupReason   string `json:"cleanup_reason,omitempty"`
+	InstalledAt     string `json:"installed_at,omitempty"`
+	UninstalledAt   string `json:"uninstalled_at,omitempty"`
+	UpdatedAt       string `json:"updated_at,omitempty"`
+	ListenAddr      string `json:"listen_addr,omitempty"`
+	LastAction      string `json:"last_action,omitempty"`
 }
 
 func DefaultState() State {

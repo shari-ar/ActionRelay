@@ -346,16 +346,16 @@ func runServe(args []string) error {
 	}
 
 	routeAgent, err := agent.New(dispatcher, agent.Settings{
-		BatchInterval:       time.Duration(cfg.BatchIntervalMS) * time.Millisecond,
-		RequestTimeout:      time.Duration(cfg.RequestTimeoutMS) * time.Millisecond,
-		MaxRequestBodyBytes: cfg.MaxRequestBodyBytes,
-		MaxResponseBytes:    cfg.MaxResponseBytes,
-		WorkerConcurrency:   cfg.WorkerConcurrency,
-		MaxBatchRequests:    cfg.MaxBatchRequests,
-		MaxBatchBytes:       cfg.MaxBatchBytes,
-		MaxQueueRequests:    cfg.MaxQueueRequests,
-		CacheTTL:            time.Duration(cfg.CacheTTLMS) * time.Millisecond,
-		CacheMaxEntries:     cfg.CacheMaxEntries,
+		BatchInterval:        time.Duration(cfg.BatchIntervalMS) * time.Millisecond,
+		RequestTimeout:       time.Duration(cfg.RequestTimeoutMS) * time.Millisecond,
+		MaxRequestBodyBytes:  cfg.MaxRequestBodyBytes,
+		MaxResponseBytes:     cfg.MaxResponseBytes,
+		WorkerConcurrency:    cfg.WorkerConcurrency,
+		MaxBatchRequests:     cfg.MaxBatchRequests,
+		MaxBatchBytes:        cfg.MaxBatchBytes,
+		MaxQueueRequests:     cfg.MaxQueueRequests,
+		CacheTTL:             time.Duration(cfg.CacheTTLMS) * time.Millisecond,
+		CacheMaxEntries:      cfg.CacheMaxEntries,
 		BackpressureCooldown: time.Duration(cfg.BackpressureCooldownMS) * time.Millisecond,
 	})
 	if err != nil {
@@ -463,9 +463,9 @@ type statusAgent struct {
 }
 
 type agentStatusResponse struct {
-	OK      bool            `json:"ok"`
-	Route   *route.State    `json:"route"`
-	Runtime agent.Snapshot  `json:"runtime"`
+	OK      bool           `json:"ok"`
+	Route   *route.State   `json:"route"`
+	Runtime agent.Snapshot `json:"runtime"`
 }
 
 func runStatus(args []string) error {

@@ -13,48 +13,48 @@ import (
 const maxWorkerConcurrencyLimit = 8
 
 type Config struct {
-	Repo                string `json:"repo"`
-	Workflow            string `json:"workflow"`
-	WorkflowRef         string `json:"workflow_ref"`
-	GitHubTokenEnv      string `json:"github_token_env"`
-	GitHubAPIBaseURL    string `json:"github_api_base_url"`
-	AgentListenAddr     string `json:"agent_listen_addr"`
-	BatchIntervalMS     int    `json:"batch_interval_ms"`
-	RequestTimeoutMS    int    `json:"request_timeout_ms"`
-	MaxRequestBodyBytes int    `json:"max_request_body_bytes"`
-	MaxResponseBytes    int    `json:"max_response_bytes"`
-	WorkerConcurrency   int    `json:"worker_concurrency"`
-	MaxBatchRequests    int    `json:"max_batch_requests"`
-	MaxBatchBytes       int    `json:"max_batch_bytes"`
-	MaxQueueRequests    int    `json:"max_queue_requests"`
-	CacheTTLMS          int    `json:"cache_ttl_ms"`
-	CacheMaxEntries     int    `json:"cache_max_entries"`
-	BackpressureCooldownMS int `json:"backpressure_cooldown_ms"`
-	RunStartTimeoutSec     int `json:"run_start_timeout_sec"`
-	RunWaitTimeoutSec      int `json:"run_wait_timeout_sec"`
-	PollIntervalMS         int `json:"poll_interval_ms"`
+	Repo                   string `json:"repo"`
+	Workflow               string `json:"workflow"`
+	WorkflowRef            string `json:"workflow_ref"`
+	GitHubTokenEnv         string `json:"github_token_env"`
+	GitHubAPIBaseURL       string `json:"github_api_base_url"`
+	AgentListenAddr        string `json:"agent_listen_addr"`
+	BatchIntervalMS        int    `json:"batch_interval_ms"`
+	RequestTimeoutMS       int    `json:"request_timeout_ms"`
+	MaxRequestBodyBytes    int    `json:"max_request_body_bytes"`
+	MaxResponseBytes       int    `json:"max_response_bytes"`
+	WorkerConcurrency      int    `json:"worker_concurrency"`
+	MaxBatchRequests       int    `json:"max_batch_requests"`
+	MaxBatchBytes          int    `json:"max_batch_bytes"`
+	MaxQueueRequests       int    `json:"max_queue_requests"`
+	CacheTTLMS             int    `json:"cache_ttl_ms"`
+	CacheMaxEntries        int    `json:"cache_max_entries"`
+	BackpressureCooldownMS int    `json:"backpressure_cooldown_ms"`
+	RunStartTimeoutSec     int    `json:"run_start_timeout_sec"`
+	RunWaitTimeoutSec      int    `json:"run_wait_timeout_sec"`
+	PollIntervalMS         int    `json:"poll_interval_ms"`
 }
 
 func Default() Config {
 	return Config{
-		WorkflowRef:         "main",
-		GitHubTokenEnv:      "ACTIONRELAY_GITHUB_TOKEN",
-		GitHubAPIBaseURL:    "https://api.github.com",
-		AgentListenAddr:     "127.0.0.1:8787",
-		BatchIntervalMS:     1000,
-		RequestTimeoutMS:    8000,
-		MaxRequestBodyBytes: 65536,
-		MaxResponseBytes:    65536,
-		WorkerConcurrency:   4,
-		MaxBatchRequests:    32,
-		MaxBatchBytes:       262144,
-		MaxQueueRequests:    256,
-		CacheTTLMS:          10000,
-		CacheMaxEntries:     256,
+		WorkflowRef:            "main",
+		GitHubTokenEnv:         "ACTIONRELAY_GITHUB_TOKEN",
+		GitHubAPIBaseURL:       "https://api.github.com",
+		AgentListenAddr:        "127.0.0.1:8787",
+		BatchIntervalMS:        1000,
+		RequestTimeoutMS:       8000,
+		MaxRequestBodyBytes:    65536,
+		MaxResponseBytes:       65536,
+		WorkerConcurrency:      4,
+		MaxBatchRequests:       32,
+		MaxBatchBytes:          262144,
+		MaxQueueRequests:       256,
+		CacheTTLMS:             10000,
+		CacheMaxEntries:        256,
 		BackpressureCooldownMS: 15000,
-		RunStartTimeoutSec:  120,
-		RunWaitTimeoutSec:   900,
-		PollIntervalMS:      2000,
+		RunStartTimeoutSec:     120,
+		RunWaitTimeoutSec:      900,
+		PollIntervalMS:         2000,
 	}
 }
 

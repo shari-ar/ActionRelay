@@ -44,15 +44,15 @@ func NewDispatcher(cfg config.Config, token string) (*Dispatcher, error) {
 		return nil, errors.New("github token is required")
 	}
 	return &Dispatcher{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL: strings.TrimRight(cfg.GitHubAPIBaseURL, "/"),
-		owner: owner,
-		repo: repo,
-		workflow: cfg.Workflow,
-		workflowRef: cfg.WorkflowRef,
-		token: token,
-		pollInterval: time.Duration(cfg.PollIntervalMS) * time.Millisecond,
-		runStartTimeout: time.Duration(cfg.RunStartTimeoutSec) * time.Second,
+		httpClient:           &http.Client{Timeout: 30 * time.Second},
+		baseURL:              strings.TrimRight(cfg.GitHubAPIBaseURL, "/"),
+		owner:                owner,
+		repo:                 repo,
+		workflow:             cfg.Workflow,
+		workflowRef:          cfg.WorkflowRef,
+		token:                token,
+		pollInterval:         time.Duration(cfg.PollIntervalMS) * time.Millisecond,
+		runStartTimeout:      time.Duration(cfg.RunStartTimeoutSec) * time.Second,
 		runCompletionTimeout: time.Duration(cfg.RunWaitTimeoutSec) * time.Second,
 	}, nil
 }
@@ -97,7 +97,7 @@ func (d *Dispatcher) dispatchBatch(ctx context.Context, batch protocol.RequestBa
 	body := map[string]any{
 		"ref": d.workflowRef,
 		"inputs": map[string]string{
-			"batch_id":                        batch.BatchID,
+			"batch_id":                       batch.BatchID,
 			"batch_payload_b64":              base64.StdEncoding.EncodeToString(serializedBatch),
 			"max_response_bytes_per_request": strconv.Itoa(batch.Limits.MaxResponseBytesPerRequest),
 			"request_timeout_ms":             strconv.Itoa(batch.Limits.RequestTimeoutMS),

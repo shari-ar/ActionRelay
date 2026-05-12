@@ -1,7 +1,7 @@
 package protocol
 
 const (
-	RequestBatchProtocol = "actionrelay.request_batch.v1"
+	RequestBatchProtocol  = "actionrelay.request_batch.v1"
 	ResultPackageProtocol = "actionrelay.result_package.v1"
 )
 
