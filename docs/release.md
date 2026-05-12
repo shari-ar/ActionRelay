@@ -34,6 +34,17 @@ The CI workflow validates:
 - Schema file structure and protocol constants
 - Documentation integrity checks
 
+## Authentication Model
+
+Release and CI automation do not require a custom repository secret for the
+ActionRelay GitHub token.
+
+- GitHub Actions workflows in this repository use the built-in `GITHUB_TOKEN`.
+- The local ActionRelay client uses a user-managed personal access token through
+  the `ACTIONRELAY_GITHUB_TOKEN` environment variable.
+- Token creation and operating-system-specific setup steps are documented in
+  `usage.md`.
+
 ## Release Flow
 
 1. Push a semantic version tag, for example `v1.2.3`.
