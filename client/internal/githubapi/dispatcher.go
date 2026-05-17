@@ -21,6 +21,7 @@ import (
 )
 
 const gitHubAPIVersion = "2022-11-28"
+const runDiscoveryClockSkewAllowance = 5 * time.Minute
 
 type Dispatcher struct {
 	httpClient           *http.Client
@@ -44,7 +45,7 @@ func NewDispatcher(cfg config.Config, token string) (*Dispatcher, error) {
 		return nil, errors.New("github token is required")
 	}
 	return &Dispatcher{
-		httpClient:           &http.Client{Timeout: 30 * time.Second},
+		httpClient:           &http.Client{Timeout: 2 * time.Minute},
 		baseURL:              strings.TrimRight(cfg.GitHubAPIBaseURL, "/"),
 		owner:                owner,
 		repo:                 repo,
@@ -65,7 +66,7 @@ func (d *Dispatcher) ProcessBatch(ctx context.Context, batch protocol.RequestBat
 	if err := d.dispatchBatch(ctx, batch); err != nil {
 		return protocol.ResultPackage{}, err
 	}
-	runID, err := d.waitForRun(ctx, batch.BatchID, dispatchedAt.Add(-15*time.Second))
+	runID, err := d.waitForRun(ctx, batch.BatchID, dispatchedAt.Add(-runDiscoveryClockSkewAllowance))
 	if err != nil {
 		return protocol.ResultPackage{}, err
 	}

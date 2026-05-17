@@ -26,6 +26,7 @@ import (
 const (
 	defaultConfigPath = ".actionrelay/config.json"
 	defaultAgentURL   = "http://127.0.0.1:8787"
+	fetchTimeout      = 60 * time.Second
 )
 
 func main() {
@@ -280,7 +281,7 @@ func runFetch(args []string) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+	resp, err := (&http.Client{Timeout: fetchTimeout}).Do(req)
 	if err != nil {
 		return fmt.Errorf("submit to local agent: %w", err)
 	}

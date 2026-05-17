@@ -5,9 +5,10 @@ binaries with checksums.
 
 ## Versioning Model
 
-- A Git tag in the form `v<major>.<minor>.<patch>` triggers release publishing.
-- The tag value is embedded in artifact names.
-- GitHub auto-generated release notes are published for each tag.
+- A GitHub release publication event triggers packaging and asset upload.
+- The release tag value is embedded in artifact names.
+- If needed, maintainers can manually rerun the release workflow with
+  `workflow_dispatch` and an existing tag.
 
 ## Build Outputs
 
@@ -47,6 +48,8 @@ ActionRelay GitHub token.
 
 ## Release Flow
 
-1. Push a semantic version tag, for example `v1.2.3`.
-2. Workflow builds cross-platform archives and checksum file.
-3. Workflow uploads assets to the GitHub Release for the tag.
+1. Create or publish a semantic version release in GitHub (for example
+   `v1.2.3`).
+2. Workflow builds cross-platform archives and checksum file for that release
+   tag.
+3. Workflow uploads assets directly to the published GitHub Release.
