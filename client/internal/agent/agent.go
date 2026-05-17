@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -295,16 +296,19 @@ func (a *Agent) Run(ctx context.Context) {
 func (a *Agent) Submit(ctx context.Context, request SubmitRequest) (protocol.RequestResult, error) {
 	item := normalizeRequest(request)
 	item.RequestID = newID("req")
+	log.Printf("actionrelay: request accepted request_id=%s method=%s url=%s", item.RequestID, item.Method, item.URL)
 
 	if classification := classifyRequest(item, len(request.Body), a.settings.MaxRequestBodyBytes); classification != nil {
 		result := errorResult(item.RequestID, classification.Code, classification.Message)
 		a.recordLocalRejection(result)
+		log.Printf("actionrelay: request rejected request_id=%s code=%s", item.RequestID, classification.Code)
 		return result, nil
 	}
 
 	if reason, active := a.backpressureState(time.Now().UTC()); active {
 		result := errorResult(item.RequestID, "RUN_DELAYED", reason)
 		a.recordLocalRejection(result)
+		log.Printf("actionrelay: request backpressured request_id=%s reason=%q", item.RequestID, reason)
 		return result, nil
 	}
 
@@ -314,9 +318,11 @@ func (a *Agent) Submit(ctx context.Context, request SubmitRequest) (protocol.Req
 	select {
 	case a.queue <- pending:
 		a.recordSubmitted()
+		log.Printf("actionrelay: request queued request_id=%s", item.RequestID)
 	default:
 		result := errorResult(item.RequestID, "QUEUE_OVERFLOW", "local queue is full")
 		a.recordLocalRejection(result)
+		log.Printf("actionrelay: request queue_overflow request_id=%s", item.RequestID)
 		return result, nil
 	}
 
@@ -416,6 +422,7 @@ func (a *Agent) dispatchBatch(ctx context.Context, requests []pendingRequest) {
 		return
 	}
 
+	log.Printf("actionrelay: batch dispatch start batch_id=%s request_count=%d batch_bytes=%d", batchID, len(units), batchSize)
 	a.recordBatchDispatched(batchID, len(units))
 	resultPackage, err := a.dispatcher.ProcessBatch(ctx, batch)
 	if err != nil {
@@ -425,12 +432,15 @@ func (a *Agent) dispatchBatch(ctx context.Context, requests []pendingRequest) {
 			errorCode = "RUN_DELAYED"
 			a.activateBackpressure("GitHub Actions run start delayed")
 		}
+		log.Printf("actionrelay: batch dispatch failed batch_id=%s code=%s error=%q", batchID, errorCode, err.Error())
 		a.failUnits(units, errorCode, err.Error())
 		return
 	}
 	a.recordDispatchSuccess()
+	log.Printf("actionrelay: batch dispatch complete batch_id=%s result_count=%d ok=%t", batchID, len(resultPackage.Results), resultPackage.OK)
 	if err := protocol.VerifyResultPackageForBatch(resultPackage, batchID, requestIDs); err != nil {
 		a.recordDispatchError(err)
+		log.Printf("actionrelay: batch result verification failed batch_id=%s error=%q", batchID, err.Error())
 		a.failUnits(units, "RESULT_PACKAGE_NOT_FOUND", "result package verification failed: "+err.Error())
 		return
 	}
@@ -446,6 +456,11 @@ func (a *Agent) dispatchBatch(ctx context.Context, requests []pendingRequest) {
 			primaryResult = errorResult(unit.primary.request.RequestID, "RESULT_PACKAGE_NOT_FOUND", "request result missing from package")
 		}
 		primaryResult = sanitizeResult(primaryResult)
+		if primaryResult.OK && primaryResult.Response != nil {
+			log.Printf("actionrelay: request completed request_id=%s status=%d url=%s", primaryResult.RequestID, primaryResult.Response.Status, primaryResult.Response.URL)
+		} else if primaryResult.Error != nil {
+			log.Printf("actionrelay: request failed request_id=%s code=%s", primaryResult.RequestID, primaryResult.Error.Code)
+		}
 		a.recordResult(primaryResult)
 		unit.primary.resultCh <- primaryResult
 

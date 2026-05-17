@@ -1,7 +1,6 @@
 package githubapi
 
 import (
-	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -9,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -63,20 +62,25 @@ func (d *Dispatcher) ProcessBatch(ctx context.Context, batch protocol.RequestBat
 		return protocol.ResultPackage{}, fmt.Errorf("request batch validation failed: %w", err)
 	}
 	dispatchedAt := time.Now().UTC()
+	log.Printf("actionrelay: github dispatch begin batch_id=%s workflow=%s ref=%s", batch.BatchID, d.workflow, d.workflowRef)
 	if err := d.dispatchBatch(ctx, batch); err != nil {
 		return protocol.ResultPackage{}, err
 	}
+	log.Printf("actionrelay: github dispatch accepted batch_id=%s", batch.BatchID)
 	runID, err := d.waitForRun(ctx, batch.BatchID, dispatchedAt.Add(-runDiscoveryClockSkewAllowance))
 	if err != nil {
 		return protocol.ResultPackage{}, err
 	}
+	log.Printf("actionrelay: github run discovered batch_id=%s run_id=%d", batch.BatchID, runID)
 	if err := d.waitForRunCompletion(ctx, runID); err != nil {
 		return protocol.ResultPackage{}, err
 	}
-	pkg, err := d.downloadResultPackage(ctx, runID, batch.BatchID)
+	log.Printf("actionrelay: github run completed batch_id=%s run_id=%d", batch.BatchID, runID)
+	pkg, err := d.waitForResultPackage(ctx, batch.BatchID)
 	if err != nil {
 		return protocol.ResultPackage{}, err
 	}
+	log.Printf("actionrelay: github result fetched batch_id=%s run_id=%d result_count=%d", batch.BatchID, runID, len(pkg.Results))
 	if err := protocol.ValidateResultPackage(pkg); err != nil {
 		return protocol.ResultPackage{}, fmt.Errorf("result package validation failed: %w", err)
 	}
@@ -192,6 +196,7 @@ func (d *Dispatcher) findRunForBatch(ctx context.Context, batchID string, earlie
 		if createdAt.Before(earliestCreatedAt) {
 			continue
 		}
+		log.Printf("actionrelay: github run candidate matched batch_id=%s run_id=%d created_at=%s status=%s", batchID, run.ID, run.CreatedAt, run.Status)
 		return run.ID, true, nil
 	}
 	return 0, false, nil
@@ -213,6 +218,7 @@ func (d *Dispatcher) waitForRunCompletion(ctx context.Context, runID int64) erro
 			}
 			return nil
 		}
+		log.Printf("actionrelay: github run pending run_id=%d status=%s conclusion=%s", runID, run.Status, run.Conclusion)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -243,102 +249,81 @@ func (d *Dispatcher) getRun(ctx context.Context, runID int64) (workflowRun, erro
 	return run, nil
 }
 
-type runArtifactsResponse struct {
-	Artifacts []artifact `json:"artifacts"`
+type repoContentResponse struct {
+	Type     string `json:"type"`
+	Content  string `json:"content"`
+	Encoding string `json:"encoding"`
 }
 
-type artifact struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Expired bool   `json:"expired"`
-}
-
-func (d *Dispatcher) downloadResultPackage(ctx context.Context, runID int64, batchID string) (protocol.ResultPackage, error) {
-	artifactID, err := d.findArtifactID(ctx, runID, "actionrelay-result-"+batchID)
-	if err != nil {
-		return protocol.ResultPackage{}, err
-	}
-
-	endpoint := fmt.Sprintf("%s/repos/%s/%s/actions/artifacts/%d/zip", d.baseURL, d.owner, d.repo, artifactID)
-	req, err := d.newJSONRequest(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return protocol.ResultPackage{}, err
-	}
-	resp, err := d.httpClient.Do(req)
-	if err != nil {
-		return protocol.ResultPackage{}, fmt.Errorf("download artifact: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		message, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return protocol.ResultPackage{}, fmt.Errorf("download artifact failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(message)))
-	}
-
-	artifactZip, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
-	if err != nil {
-		return protocol.ResultPackage{}, fmt.Errorf("read artifact: %w", err)
-	}
-	return parseResultPackageFromZip(artifactZip)
-}
-
-func (d *Dispatcher) findArtifactID(ctx context.Context, runID int64, expectedName string) (int64, error) {
-	endpoint := fmt.Sprintf("%s/repos/%s/%s/actions/runs/%d/artifacts?per_page=100", d.baseURL, d.owner, d.repo, runID)
-	req, err := d.newJSONRequest(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return 0, err
-	}
-	resp, err := d.httpClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("list run artifacts: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		message, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return 0, fmt.Errorf("list run artifacts failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(message)))
-	}
-	var parsed runArtifactsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return 0, fmt.Errorf("decode artifacts: %w", err)
-	}
-	for _, item := range parsed.Artifacts {
-		if item.Name == expectedName && !item.Expired {
-			return item.ID, nil
-		}
-	}
-	return 0, fmt.Errorf("RESULT_PACKAGE_NOT_FOUND: artifact %s not found for run %d", expectedName, runID)
-}
-
-func parseResultPackageFromZip(payload []byte) (protocol.ResultPackage, error) {
-	reader, err := zip.NewReader(bytes.NewReader(payload), int64(len(payload)))
-	if err != nil {
-		return protocol.ResultPackage{}, fmt.Errorf("open artifact zip: %w", err)
-	}
-	foundResultPackage := false
-	for _, file := range reader.File {
-		if path.Base(file.Name) != "result-package.json" {
-			continue
-		}
-		if foundResultPackage {
-			return protocol.ResultPackage{}, errors.New("result artifact contains multiple result-package.json files")
-		}
-		if file.UncompressedSize64 > 10<<20 {
-			return protocol.ResultPackage{}, errors.New("result-package.json exceeds maximum allowed size")
-		}
-		foundResultPackage = true
-		stream, err := file.Open()
+func (d *Dispatcher) waitForResultPackage(ctx context.Context, batchID string) (protocol.ResultPackage, error) {
+	deadline := time.Now().Add(d.runCompletionTimeout)
+	for {
+		pkg, found, err := d.downloadResultPackage(ctx, batchID)
 		if err != nil {
-			return protocol.ResultPackage{}, fmt.Errorf("open result file: %w", err)
+			return protocol.ResultPackage{}, err
 		}
-		defer stream.Close()
-		var result protocol.ResultPackage
-		decoder := json.NewDecoder(io.LimitReader(stream, 10<<20))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&result); err != nil {
-			return protocol.ResultPackage{}, fmt.Errorf("decode result package: %w", err)
+		if found {
+			return pkg, nil
 		}
-		return result, nil
+		if time.Now().After(deadline) {
+			return protocol.ResultPackage{}, fmt.Errorf("RESULT_PACKAGE_NOT_FOUND: timed out waiting for result %s", batchID)
+		}
+		select {
+		case <-ctx.Done():
+			return protocol.ResultPackage{}, ctx.Err()
+		case <-time.After(d.pollInterval):
+		}
 	}
-	return protocol.ResultPackage{}, errors.New("RESULT_PACKAGE_NOT_FOUND: result-package.json missing in artifact")
+}
+
+func (d *Dispatcher) downloadResultPackage(ctx context.Context, batchID string) (protocol.ResultPackage, bool, error) {
+	endpoint := fmt.Sprintf(
+		"%s/repos/%s/%s/contents/results/%s.json?ref=actionrelay-results",
+		d.baseURL,
+		d.owner,
+		d.repo,
+		url.PathEscape(batchID),
+	)
+	req, err := d.newJSONRequest(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return protocol.ResultPackage{}, false, err
+	}
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return protocol.ResultPackage{}, false, fmt.Errorf("download result package: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return protocol.ResultPackage{}, false, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		message, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return protocol.ResultPackage{}, false, fmt.Errorf("download result package failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(message)))
+	}
+	var payload repoContentResponse
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, 10<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		return protocol.ResultPackage{}, false, fmt.Errorf("decode result package metadata: %w", err)
+	}
+	if payload.Type != "file" {
+		return protocol.ResultPackage{}, false, fmt.Errorf("RESULT_PACKAGE_NOT_FOUND: unexpected content type %q", payload.Type)
+	}
+	if payload.Encoding != "base64" {
+		return protocol.ResultPackage{}, false, fmt.Errorf("RESULT_PACKAGE_NOT_FOUND: unexpected content encoding %q", payload.Encoding)
+	}
+	raw := strings.ReplaceAll(payload.Content, "\n", "")
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return protocol.ResultPackage{}, false, fmt.Errorf("decode result package content: %w", err)
+	}
+	var result protocol.ResultPackage
+	pkgDecoder := json.NewDecoder(bytes.NewReader(decoded))
+	pkgDecoder.DisallowUnknownFields()
+	if err := pkgDecoder.Decode(&result); err != nil {
+		return protocol.ResultPackage{}, false, fmt.Errorf("decode result package: %w", err)
+	}
+	return result, true, nil
 }
 
 func (d *Dispatcher) newJSONRequest(ctx context.Context, method, endpoint string, body io.Reader) (*http.Request, error) {

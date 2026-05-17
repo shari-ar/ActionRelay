@@ -49,10 +49,11 @@ consistency.
 The Node.js 20 worker receives one batch package, validates it, processes the
 contained requests with strict concurrency, writes one result package, and exits.
 
-### Result Package
+### Result Package Store
 
-The result package contains one result entry per request ID. It may include
-successful responses, policy blocks, timeouts, or worker errors.
+The worker writes one result package per batch to the `actionrelay-results`
+branch under `results/<batch_id>.json`. The client fetches that file through
+the GitHub Contents API on `api.github.com`.
 
 ## Flow
 
@@ -61,8 +62,8 @@ successful responses, policy blocks, timeouts, or worker errors.
 2. Agent accepts eligible requests and rejects unsupported traffic early.
 3. Every second, the agent sends one batch if the queue is non-empty.
 4. GitHub Actions worker validates and processes the batch.
-5. Worker uploads one result package.
-6. Agent downloads the package.
+5. Worker publishes one result package file to `actionrelay-results`.
+6. Agent downloads the package from the Contents API.
 7. Agent maps each result back to its waiting local request.
 ```
 
@@ -87,7 +88,7 @@ Expected failures include:
 - Local route setup failure.
 - Batch queue overflow.
 - GitHub Actions queue delay.
-- Dispatch, polling, or artifact failure.
+- Dispatch, polling, or result publication failure.
 - Request blocked by policy.
 - Per-request timeout.
 - Batch result package missing, malformed, or too large.

@@ -97,13 +97,14 @@ Initial error codes:
 - `RESULT_PACKAGE_NOT_FOUND`: Result package was unavailable.
 - `WORKER_ERROR`: Worker failed unexpectedly.
 
-## Artifact Format
+## Result Storage Format
 
-Each batch produces one artifact:
+Each batch produces one result file in the results branch:
 
 ```text
-artifact: actionrelay-result-<batch_id>
-file:     result-package.json
+branch: actionrelay-results
+path:   results/<batch_id>.json
 ```
 
-The client must reject malformed, oversized, or mismatched result packages.
+The client reads that JSON file using the GitHub Contents API and must reject
+malformed, oversized, or mismatched result packages.

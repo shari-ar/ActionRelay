@@ -9,7 +9,7 @@ sensitive values while keeping traffic bounded.
 - The local route agent is trusted by the user.
 - GitHub Actions runs the reviewed worker code.
 - Remote sites and responses are untrusted.
-- Workflow logs and artifacts must not expose secrets unnecessarily.
+- Workflow logs and published result files must not expose secrets unnecessarily.
 
 ## Sensitive Traffic
 
@@ -66,7 +66,7 @@ Recommended controls:
 Current implementation safeguards:
 
 - Redacts sensitive response headers (`set-cookie`, authentication challenge
-  headers) before writing result artifacts.
+  headers) before writing result packages.
 - Redacts common credential and token patterns from worker and client error
   messages.
 - Verifies result package structure, request ID coverage, and batch ID match

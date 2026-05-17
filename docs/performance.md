@@ -6,7 +6,7 @@ package per second when requests are pending.
 
 ## Priorities
 
-1. Minimize GitHub API calls, workflow runs, and artifacts.
+1. Minimize GitHub API calls, workflow runs, and result-file churn.
 2. Return local responses as quickly as the batch model allows.
 3. Keep batches and result packages small.
 4. Keep worker runtime short.
@@ -49,6 +49,6 @@ Initial defaults should be conservative:
 ## Latency Reality
 
 The batch loop adds up to one second before dispatch. GitHub Actions then adds
-queueing, runner startup, artifact upload, artifact availability, and polling.
+queueing, runner startup, result publication, result availability, and polling.
 ActionRelay should optimize these costs, but it should not promise real-time VPN
 or direct-connection latency.

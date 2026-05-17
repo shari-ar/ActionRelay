@@ -8,7 +8,7 @@ as a batch, and returned as one result package.
 
 - GitHub repository with the ActionRelay workflow.
 - GitHub Actions enabled.
-- GitHub token for workflow dispatch, run read, and artifact read.
+- GitHub token for workflow dispatch, run read, and results branch read.
 - Local ActionRelay Go route agent.
 - Permission to install or configure a local route on the device.
 
@@ -332,8 +332,8 @@ cd ~/actionrelay
 
 ActionRelay requires a GitHub personal access token (PAT) on the machine that
 runs the local client. The client uses this token to dispatch the GitHub Actions
-workflow, poll workflow runs, and download result artifacts through the GitHub
-API.
+workflow, poll workflow runs, and read result files from the
+`actionrelay-results` branch through the GitHub Contents API.
 
 The current implementation reads the token from the environment variable
 `ACTIONRELAY_GITHUB_TOKEN`.
