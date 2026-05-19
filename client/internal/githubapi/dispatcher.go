@@ -302,7 +302,6 @@ func (d *Dispatcher) downloadResultPackage(ctx context.Context, batchID string) 
 	}
 	var payload repoContentResponse
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, 10<<20))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&payload); err != nil {
 		return protocol.ResultPackage{}, false, fmt.Errorf("decode result package metadata: %w", err)
 	}
