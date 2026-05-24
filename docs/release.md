@@ -53,3 +53,21 @@ ActionRelay GitHub token.
 2. Workflow builds cross-platform archives and checksum file for that release
    tag.
 3. Workflow uploads assets directly to the published GitHub Release.
+
+## v0.4 Step 5 Validation Gate
+
+ActionRelay now includes an explicit release-readiness validation gate in CI:
+
+- Workflow step: `Validate release readiness invariants`
+- Script: `scripts/ci/validate-release-readiness.mjs`
+
+This gate verifies:
+
+- CI and release workflows still derive Go version from `client/go.mod`.
+- Client `go test ./...` and `gofmt` checks remain enforced in CI.
+- Release workflow still builds cross-platform assets and uploads checksums.
+- Protocol/schema invariants required by the desktop client remain unchanged.
+- Core release and diagnostics documentation coverage remains present.
+
+This keeps desktop stabilization changes within the GitHub-native architecture
+and helps catch regressions before tagging a release.

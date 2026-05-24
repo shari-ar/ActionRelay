@@ -26,6 +26,8 @@ const (
 	safeCacheStatusMin        = 200
 	safeCacheStatusMax        = 299
 	redactedValue             = "[REDACTED]"
+	reliabilityFailClosed     = "fail_closed"
+	reliabilityFailOpen       = "fail_open"
 )
 
 var allowedMethods = map[string]struct{}{
@@ -105,7 +107,9 @@ type Settings struct {
 	MaxQueueRequests     int
 	CacheTTL             time.Duration
 	CacheMaxEntries      int
+	StaleIfErrorTTL      time.Duration
 	BackpressureCooldown time.Duration
+	ReliabilityMode      string
 }
 
 type SubmitRequest struct {
@@ -125,7 +129,11 @@ type Snapshot struct {
 	LastBatchSentAt         string `json:"last_batch_sent_at,omitempty"`
 	LastBatchRequestCount   int    `json:"last_batch_request_count"`
 	LastDispatchError       string `json:"last_dispatch_error,omitempty"`
+	LastDispatchErrorCode   string `json:"last_dispatch_error_code,omitempty"`
+	LastDispatchErrorAt     string `json:"last_dispatch_error_at,omitempty"`
 	LastResultAt            string `json:"last_result_at,omitempty"`
+	LastBatchCompletedAt    string `json:"last_batch_completed_at,omitempty"`
+	LastBatchLatencyMS      int64  `json:"last_batch_latency_ms"`
 	TotalSubmittedRequests  uint64 `json:"total_submitted_requests"`
 	TotalLocalRejected      uint64 `json:"total_local_rejected_requests"`
 	TotalDispatchedBatches  uint64 `json:"total_dispatched_batches"`
@@ -138,6 +146,7 @@ type Snapshot struct {
 	CacheMaxEntries         int    `json:"cache_max_entries"`
 	TotalCacheHits          uint64 `json:"total_cache_hits"`
 	TotalDeduplicated       uint64 `json:"total_deduplicated_requests"`
+	TotalFailOpenServed     uint64 `json:"total_fail_open_served"`
 	BackpressureActive      bool   `json:"backpressure_active"`
 	BackpressureUntil       string `json:"backpressure_until,omitempty"`
 	BackpressureReason      string `json:"backpressure_reason,omitempty"`
@@ -158,6 +167,7 @@ type dispatchUnit struct {
 type cacheEntry struct {
 	ExpiresAt time.Time
 	Result    protocol.RequestResult
+	StoredAt  time.Time
 }
 
 type runtimeState struct {
@@ -168,7 +178,11 @@ type runtimeState struct {
 	LastBatchSentAt         string
 	LastBatchRequestCount   int
 	LastDispatchError       string
+	LastDispatchErrorCode   string
+	LastDispatchErrorAt     string
 	LastResultAt            string
+	LastBatchCompletedAt    string
+	LastBatchLatencyMS      int64
 	TotalSubmittedRequests  uint64
 	TotalLocalRejected      uint64
 	TotalDispatchedBatches  uint64
@@ -177,6 +191,7 @@ type runtimeState struct {
 	TotalFailedRequests     uint64
 	TotalCacheHits          uint64
 	TotalDeduplicated       uint64
+	TotalFailOpenServed     uint64
 	BackpressureUntil       time.Time
 	BackpressureReason      string
 }
@@ -236,6 +251,16 @@ func New(dispatcher Dispatcher, settings Settings) (*Agent, error) {
 	}
 	if settings.BackpressureCooldown <= 0 {
 		return nil, fmt.Errorf("backpressure cooldown must be > 0")
+	}
+	if settings.StaleIfErrorTTL < 0 {
+		return nil, fmt.Errorf("stale-if-error ttl must be >= 0")
+	}
+	settings.ReliabilityMode = strings.ToLower(strings.TrimSpace(settings.ReliabilityMode))
+	if settings.ReliabilityMode == "" {
+		settings.ReliabilityMode = reliabilityFailClosed
+	}
+	if settings.ReliabilityMode != reliabilityFailClosed && settings.ReliabilityMode != reliabilityFailOpen {
+		return nil, fmt.Errorf("reliability mode must be %q or %q", reliabilityFailClosed, reliabilityFailOpen)
 	}
 
 	agent := &Agent{
@@ -359,7 +384,11 @@ func (a *Agent) Snapshot() Snapshot {
 		LastBatchSentAt:         state.LastBatchSentAt,
 		LastBatchRequestCount:   state.LastBatchRequestCount,
 		LastDispatchError:       state.LastDispatchError,
+		LastDispatchErrorCode:   state.LastDispatchErrorCode,
+		LastDispatchErrorAt:     state.LastDispatchErrorAt,
 		LastResultAt:            state.LastResultAt,
+		LastBatchCompletedAt:    state.LastBatchCompletedAt,
+		LastBatchLatencyMS:      state.LastBatchLatencyMS,
 		TotalSubmittedRequests:  state.TotalSubmittedRequests,
 		TotalLocalRejected:      state.TotalLocalRejected,
 		TotalDispatchedBatches:  state.TotalDispatchedBatches,
@@ -372,6 +401,7 @@ func (a *Agent) Snapshot() Snapshot {
 		CacheMaxEntries:         a.settings.CacheMaxEntries,
 		TotalCacheHits:          state.TotalCacheHits,
 		TotalDeduplicated:       state.TotalDeduplicated,
+		TotalFailOpenServed:     state.TotalFailOpenServed,
 		BackpressureActive:      backpressureActive,
 		BackpressureUntil:       backpressureUntil,
 		BackpressureReason:      state.BackpressureReason,
@@ -424,6 +454,7 @@ func (a *Agent) dispatchBatch(ctx context.Context, requests []pendingRequest) {
 
 	log.Printf("actionrelay: batch dispatch start batch_id=%s request_count=%d batch_bytes=%d", batchID, len(units), batchSize)
 	a.recordBatchDispatched(batchID, len(units))
+	dispatchedAt := time.Now().UTC()
 	resultPackage, err := a.dispatcher.ProcessBatch(ctx, batch)
 	if err != nil {
 		a.recordDispatchError(err)
@@ -436,7 +467,7 @@ func (a *Agent) dispatchBatch(ctx context.Context, requests []pendingRequest) {
 		a.failUnits(units, errorCode, err.Error())
 		return
 	}
-	a.recordDispatchSuccess()
+	a.recordDispatchSuccess(time.Since(dispatchedAt))
 	log.Printf("actionrelay: batch dispatch complete batch_id=%s result_count=%d ok=%t", batchID, len(resultPackage.Results), resultPackage.OK)
 	if err := protocol.VerifyResultPackageForBatch(resultPackage, batchID, requestIDs); err != nil {
 		a.recordDispatchError(err)
@@ -447,13 +478,22 @@ func (a *Agent) dispatchBatch(ctx context.Context, requests []pendingRequest) {
 
 	resultByID := make(map[string]protocol.RequestResult, len(resultPackage.Results))
 	for _, result := range resultPackage.Results {
+		if _, exists := resultByID[result.RequestID]; exists {
+			log.Printf("actionrelay: duplicate result suppressed batch_id=%s request_id=%s", batchID, result.RequestID)
+			continue
+		}
 		resultByID[result.RequestID] = result
 	}
 
 	for _, unit := range units {
 		primaryResult, exists := resultByID[unit.primary.request.RequestID]
 		if !exists {
-			primaryResult = errorResult(unit.primary.request.RequestID, "RESULT_PACKAGE_NOT_FOUND", "request result missing from package")
+			recoveredResult, recovered := a.recoverStaleForMissing(unit, "request result missing from package")
+			if recovered {
+				primaryResult = recoveredResult
+			} else {
+				primaryResult = errorResult(unit.primary.request.RequestID, "RESULT_PACKAGE_NOT_FOUND", "request result missing from package")
+			}
 		}
 		primaryResult = sanitizeResult(primaryResult)
 		if primaryResult.OK && primaryResult.Response != nil {
@@ -963,6 +1003,7 @@ func (a *Agent) storeCacheEntry(key string, result protocol.RequestResult, now t
 	entry := cacheEntry{
 		ExpiresAt: now.Add(a.settings.CacheTTL),
 		Result:    result,
+		StoredAt:  now,
 	}
 	a.mu.Lock()
 	if len(a.cache) >= a.settings.CacheMaxEntries {
@@ -980,6 +1021,22 @@ func (a *Agent) storeCacheEntry(key string, result protocol.RequestResult, now t
 	}
 	a.cache[key] = entry
 	a.mu.Unlock()
+}
+
+func (a *Agent) loadStaleCacheEntry(key string, now time.Time) (protocol.RequestResult, bool) {
+	if !a.cacheEnabled() || key == "" || a.settings.StaleIfErrorTTL <= 0 {
+		return protocol.RequestResult{}, false
+	}
+	a.mu.Lock()
+	entry, exists := a.cache[key]
+	a.mu.Unlock()
+	if !exists || entry.StoredAt.IsZero() {
+		return protocol.RequestResult{}, false
+	}
+	if now.Sub(entry.StoredAt) > a.settings.StaleIfErrorTTL {
+		return protocol.RequestResult{}, false
+	}
+	return cloneResultForRequest(entry.Result, entry.Result.RequestID), true
 }
 
 func (a *Agent) evictExpiredCache(now time.Time) {
@@ -1018,15 +1075,19 @@ func (a *Agent) recordBatchDispatched(batchID string, requestCount int) {
 	a.runtime.LastBatchSentAt = time.Now().UTC().Format(time.RFC3339)
 	a.runtime.LastBatchRequestCount = requestCount
 	a.runtime.LastDispatchError = ""
+	a.runtime.LastDispatchErrorCode = ""
 	a.runtime.TotalDispatchedBatches++
 	a.runtime.TotalDispatchedRequests += uint64(requestCount)
 	a.mu.Unlock()
 }
 
-func (a *Agent) recordDispatchSuccess() {
+func (a *Agent) recordDispatchSuccess(latency time.Duration) {
 	a.mu.Lock()
 	a.runtime.DispatchInFlight = false
 	a.runtime.LastDispatchError = ""
+	a.runtime.LastDispatchErrorCode = ""
+	a.runtime.LastBatchCompletedAt = time.Now().UTC().Format(time.RFC3339)
+	a.runtime.LastBatchLatencyMS = latency.Milliseconds()
 	a.mu.Unlock()
 }
 
@@ -1034,6 +1095,8 @@ func (a *Agent) recordDispatchError(err error) {
 	a.mu.Lock()
 	a.runtime.DispatchInFlight = false
 	a.runtime.LastDispatchError = redactSecretText(err.Error())
+	a.runtime.LastDispatchErrorCode = inferErrorCode(err)
+	a.runtime.LastDispatchErrorAt = time.Now().UTC().Format(time.RFC3339)
 	a.mu.Unlock()
 }
 
@@ -1105,15 +1168,57 @@ func (a *Agent) rejectPendingForBackpressure(pending []pendingRequest, reason st
 func (a *Agent) failUnits(units []dispatchUnit, code, message string) {
 	safeMessage := redactSecretText(message)
 	for _, unit := range units {
-		primaryResult := errorResult(unit.primary.request.RequestID, code, safeMessage)
+		primaryResult, usedStale := a.recoverStaleForError(unit, code, safeMessage)
+		if !usedStale {
+			primaryResult = errorResult(unit.primary.request.RequestID, code, safeMessage)
+		}
 		a.recordResult(primaryResult)
 		unit.primary.resultCh <- primaryResult
 		for _, duplicate := range unit.duplicates {
-			duplicateResult := errorResult(duplicate.request.RequestID, code, safeMessage)
+			duplicateResult := cloneResultForRequest(primaryResult, duplicate.request.RequestID)
 			a.recordResult(duplicateResult)
 			duplicate.resultCh <- duplicateResult
 		}
 	}
+}
+
+func (a *Agent) recoverStaleForError(unit dispatchUnit, code, message string) (protocol.RequestResult, bool) {
+	if !a.failOpenEnabled() || !unit.cacheable || !isRecoverableCode(code) {
+		return protocol.RequestResult{}, false
+	}
+	stale, ok := a.loadStaleCacheEntry(unit.cacheKey, time.Now().UTC())
+	if !ok {
+		return protocol.RequestResult{}, false
+	}
+	log.Printf("actionrelay: fail-open stale response used request_id=%s code=%s", unit.primary.request.RequestID, code)
+	a.recordFailOpenServed()
+	return cloneResultForRequest(stale, unit.primary.request.RequestID), true
+}
+
+func (a *Agent) recoverStaleForMissing(unit dispatchUnit, reason string) (protocol.RequestResult, bool) {
+	if !a.failOpenEnabled() || !unit.cacheable {
+		return protocol.RequestResult{}, false
+	}
+	stale, ok := a.loadStaleCacheEntry(unit.cacheKey, time.Now().UTC())
+	if !ok {
+		return protocol.RequestResult{}, false
+	}
+	log.Printf("actionrelay: fail-open stale response used request_id=%s reason=%q", unit.primary.request.RequestID, reason)
+	a.recordFailOpenServed()
+	return cloneResultForRequest(stale, unit.primary.request.RequestID), true
+}
+
+func isRecoverableCode(code string) bool {
+	switch code {
+	case "RUN_DELAYED", "DISPATCH_FAILED", "WORKER_ERROR", "RESULT_PACKAGE_NOT_FOUND":
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *Agent) failOpenEnabled() bool {
+	return a.settings.ReliabilityMode == reliabilityFailOpen
 }
 
 func isRunDelayedError(err error) bool {
@@ -1121,4 +1226,29 @@ func isRunDelayedError(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "RUN_DELAYED")
+}
+
+func inferErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := err.Error()
+	switch {
+	case strings.Contains(message, "RUN_DELAYED"):
+		return "RUN_DELAYED"
+	case strings.Contains(message, "RESULT_PACKAGE_NOT_FOUND"):
+		return "RESULT_PACKAGE_NOT_FOUND"
+	case strings.Contains(message, "WORKER_ERROR"):
+		return "WORKER_ERROR"
+	case strings.Contains(message, "BATCH_TOO_LARGE"):
+		return "BATCH_TOO_LARGE"
+	default:
+		return "DISPATCH_FAILED"
+	}
+}
+
+func (a *Agent) recordFailOpenServed() {
+	a.mu.Lock()
+	a.runtime.TotalFailOpenServed++
+	a.mu.Unlock()
 }

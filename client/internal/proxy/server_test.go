@@ -192,3 +192,96 @@ func TestProxyResultErrorMapping(t *testing.T) {
 		t.Fatalf("expected status 405, got %d", resp.Code)
 	}
 }
+
+func TestProxyConnectReturnsNotImplemented(t *testing.T) {
+	fake := &fakeSubmitter{
+		submitFunc: func(ctx context.Context, request agent.SubmitRequest) (protocol.RequestResult, error) {
+			t.Fatalf("submit should not be called for CONNECT")
+			return protocol.RequestResult{}, nil
+		},
+	}
+	server, err := NewServer(Config{ListenAddr: "127.0.0.1:8788"}, fake)
+	if err != nil {
+		t.Fatalf("NewServer returned error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodConnect, "http://proxy.local", nil)
+	req.Host = "example.com:443"
+	resp := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusNotImplemented {
+		t.Fatalf("expected status 501, got %d", resp.Code)
+	}
+}
+
+func TestProxyOversizedBodyRejected(t *testing.T) {
+	fake := &fakeSubmitter{
+		submitFunc: func(ctx context.Context, request agent.SubmitRequest) (protocol.RequestResult, error) {
+			t.Fatalf("submit should not be called for oversized body")
+			return protocol.RequestResult{}, nil
+		},
+	}
+	server, err := NewServer(Config{ListenAddr: "127.0.0.1:8788"}, fake)
+	if err != nil {
+		t.Fatalf("NewServer returned error: %v", err)
+	}
+
+	oversized := strings.Repeat("a", maxProxyRequestBodyBytes+1)
+	req := httptest.NewRequest(http.MethodPost, "http://proxy.local/upload", strings.NewReader(oversized))
+	req.URL.Scheme = "http"
+	req.URL.Host = "example.com"
+	req.URL.Path = "/upload"
+	req.Host = "example.com"
+	resp := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected status 413, got %d", resp.Code)
+	}
+}
+
+func TestWriteResultAsHTTPStripsHopByHopHeaders(t *testing.T) {
+	rec := httptest.NewRecorder()
+	err := writeResultAsHTTP(rec, protocol.RequestResult{
+		RequestID: "req-headers",
+		OK:        true,
+		Response: &protocol.HTTPResponse{
+			Status: 200,
+			Headers: map[string]string{
+				"content-type": "text/plain",
+				"connection":   "keep-alive",
+			},
+			Body: protocol.ResponseBody{Data: "ok"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("writeResultAsHTTP returned error: %v", err)
+	}
+	if got := rec.Header().Get("Connection"); got != "" {
+		t.Fatalf("expected Connection header to be stripped, got %q", got)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("expected Content-Type header, got %q", got)
+	}
+	if got := rec.Header().Get("Content-Length"); got != "2" {
+		t.Fatalf("expected Content-Length=2, got %q", got)
+	}
+}
+
+func TestWriteResultAsHTTPRejectsInvalidStatus(t *testing.T) {
+	rec := httptest.NewRecorder()
+	err := writeResultAsHTTP(rec, protocol.RequestResult{
+		RequestID: "req-status",
+		OK:        true,
+		Response: &protocol.HTTPResponse{
+			Status: 999,
+			Body:   protocol.ResponseBody{Data: "ok"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected invalid status error")
+	}
+}

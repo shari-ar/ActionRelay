@@ -70,3 +70,6 @@ jobs:
 
       - name: Validate documentation
         run: node scripts/ci/validate-docs.mjs
+
+      - name: Validate release readiness invariants
+        run: node scripts/ci/validate-release-readiness.mjs

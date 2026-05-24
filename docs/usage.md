@@ -439,6 +439,21 @@ The agent should:
 - Match each result to the original local request.
 - Fail unsupported traffic quickly with a local error.
 
+### Reliability Controls
+
+The client supports reliability controls for GitHub Actions delay/failure paths:
+
+- `reliability_mode`:
+  - `fail_closed` (default): return explicit request errors when dispatch/run/result
+    retrieval fails.
+  - `fail_open`: for cacheable requests, return recent stale cached responses when
+    recoverable GitHub-side errors occur.
+- `stale_if_error_ttl_ms`:
+  - Maximum age for stale-cache fallback in `fail_open` mode.
+  - `0` disables stale fallback.
+
+These settings are stored in `.actionrelay/config.json` and validated on startup.
+
 ## Local Agent Endpoints
 
 Phase 4 exposes a local API from `serve`:
@@ -449,6 +464,43 @@ Phase 4 exposes a local API from `serve`:
 
 `POST /v1/requests` returns one request result object after the request is
 processed within a batch cycle.
+
+## Runtime Diagnostics And Troubleshooting
+
+Use:
+
+```sh
+actionrelay status --config .actionrelay/config.json
+```
+
+The output now includes:
+
+- `agent.runtime.last_dispatch_error_code`: normalized dispatch/runtime error class.
+- `agent.runtime.last_dispatch_error_at`: timestamp of most recent dispatch failure.
+- `agent.runtime.last_batch_latency_ms`: most recent batch end-to-end latency.
+- `agent.runtime.total_fail_open_served`: count of stale fail-open responses served.
+- `diagnostics.severity`: `ok`, `warning`, or `critical`.
+- `diagnostics.issues`: machine-readable issue hints for quick triage.
+- `policy.*`: operator-facing policy and runtime integration view:
+  GitHub-only server/domain constraints, reliability mode, proxy listeners, and
+  bypass defaults.
+
+Quick triage guide:
+
+- `agent_unreachable`: the local `serve` process is down or not reachable.
+- `backpressure_active`: GitHub Actions start delays are currently throttling local submissions.
+- `queue_pressure_high`: local queue depth is above 80% of capacity.
+- `last_dispatch_error:*`: inspect dispatch/run/result retrieval failures.
+- `dispatch_inflight_stuck`: in-flight batch likely stalled and needs operator attention.
+- `batch_latency_high`: end-to-end batch latency is elevated for recent traffic.
+
+Long-running service hardening:
+
+- `serve` now runs explicit HTTP server instances for both agent and proxy
+  listeners (when proxy mode is enabled).
+- Both listeners use conservative idle/read-header timeouts.
+- Shutdown now drains both listeners together on signal-driven cancellation,
+  reducing orphaned background listener behavior.
 
 ## Manual Test Mode
 

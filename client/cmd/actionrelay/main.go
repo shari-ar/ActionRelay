@@ -534,7 +534,9 @@ func runServe(args []string) error {
 		MaxQueueRequests:     cfg.MaxQueueRequests,
 		CacheTTL:             time.Duration(cfg.CacheTTLMS) * time.Millisecond,
 		CacheMaxEntries:      cfg.CacheMaxEntries,
+		StaleIfErrorTTL:      time.Duration(cfg.StaleIfErrorTTLMS) * time.Millisecond,
 		BackpressureCooldown: time.Duration(cfg.BackpressureCooldownMS) * time.Millisecond,
+		ReliabilityMode:      cfg.ReliabilityMode,
 	})
 	if err != nil {
 		return err
@@ -544,14 +546,21 @@ func runServe(args []string) error {
 	defer cancel()
 	go routeAgent.Run(ctx)
 
+	var proxyHTTPServer *http.Server
 	if cfg.ProxyEnabled {
 		proxyServer, err := proxy.NewServer(proxy.Config{ListenAddr: cfg.ProxyListenAddr}, routeAgent)
 		if err != nil {
 			return err
 		}
+		proxyHTTPServer = &http.Server{
+			Addr:              cfg.ProxyListenAddr,
+			Handler:           proxyServer.Handler(),
+			ReadHeaderTimeout: 5 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
 		go func() {
 			log.Printf("actionrelay proxy foundation listening on %s", cfg.ProxyListenAddr)
-			if err := http.ListenAndServe(cfg.ProxyListenAddr, proxyServer.Handler()); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := proxyHTTPServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Printf("actionrelay: proxy foundation server stopped: %v", err)
 				cancel()
 			}
@@ -620,6 +629,7 @@ func runServe(args []string) error {
 		Addr:              cfg.AgentListenAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	if err := route.ClearCleanupRequired(routeStatePath); err != nil {
 		return err
@@ -629,6 +639,9 @@ func runServe(args []string) error {
 		<-ctx.Done()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
+		if proxyHTTPServer != nil {
+			_ = proxyHTTPServer.Shutdown(shutdownCtx)
+		}
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
@@ -641,17 +654,36 @@ func runServe(args []string) error {
 }
 
 type statusOutput struct {
-	Timestamp      string      `json:"timestamp"`
-	RouteStatePath string      `json:"route_state_path"`
-	Route          route.State `json:"route"`
-	Agent          statusAgent `json:"agent"`
+	Timestamp      string       `json:"timestamp"`
+	RouteStatePath string       `json:"route_state_path"`
+	Route          route.State  `json:"route"`
+	Agent          statusAgent  `json:"agent"`
+	Policy         statusPolicy `json:"policy"`
+	Diagnostics    diagnostics  `json:"diagnostics"`
 }
 
 type statusAgent struct {
 	URL       string          `json:"url"`
 	Reachable bool            `json:"reachable"`
+	LatencyMS int64           `json:"latency_ms,omitempty"`
 	Error     string          `json:"error,omitempty"`
 	Runtime   *agent.Snapshot `json:"runtime,omitempty"`
+}
+
+type diagnostics struct {
+	Severity string   `json:"severity"`
+	Issues   []string `json:"issues"`
+}
+
+type statusPolicy struct {
+	GitHubServerOnly       bool     `json:"github_actions_server_only"`
+	GitHubDomainOnly       bool     `json:"github_domain_only"`
+	ReliabilityMode        string   `json:"reliability_mode,omitempty"`
+	ProxyEnabled           bool     `json:"proxy_enabled"`
+	ProxyListenAddr        string   `json:"proxy_listen_addr,omitempty"`
+	AgentListenAddr        string   `json:"agent_listen_addr,omitempty"`
+	BypassEntries          []string `json:"bypass_entries,omitempty"`
+	ProxyPlatformSupported bool     `json:"proxy_platform_supported"`
 }
 
 type agentStatusResponse struct {
@@ -702,19 +734,34 @@ func runStatus(args []string) error {
 		Agent: statusAgent{
 			URL: resolvedAgentURL,
 		},
+		Policy: statusPolicy{
+			GitHubServerOnly: true,
+			GitHubDomainOnly: true,
+		},
+	}
+	if cfg, err := config.Load(configPath); err == nil {
+		platformRuntime := proxyplatform.Status()
+		output.Policy.ReliabilityMode = cfg.ReliabilityMode
+		output.Policy.ProxyEnabled = cfg.ProxyEnabled
+		output.Policy.ProxyListenAddr = cfg.ProxyListenAddr
+		output.Policy.AgentListenAddr = cfg.AgentListenAddr
+		output.Policy.BypassEntries = platformRuntime.BypassEntries
+		output.Policy.ProxyPlatformSupported = platformRuntime.Supported
 	}
 
-	statusResp, err := fetchAgentStatus(resolvedAgentURL)
+	statusResp, latencyMS, err := fetchAgentStatus(resolvedAgentURL)
 	if err != nil {
 		output.Agent.Reachable = false
 		output.Agent.Error = err.Error()
 	} else {
 		output.Agent.Reachable = true
+		output.Agent.LatencyMS = latencyMS
 		output.Agent.Runtime = &statusResp.Runtime
 		if statusResp.Route != nil {
 			output.Route = *statusResp.Route
 		}
 	}
+	output.Diagnostics = buildDiagnostics(output)
 
 	formatted, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
@@ -724,35 +771,92 @@ func runStatus(args []string) error {
 	return nil
 }
 
-func fetchAgentStatus(agentURL string) (agentStatusResponse, error) {
+func fetchAgentStatus(agentURL string) (agentStatusResponse, int64, error) {
 	endpoint := strings.TrimRight(agentURL, "/") + "/v1/status"
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
-		return agentStatusResponse{}, err
+		return agentStatusResponse{}, 0, err
 	}
+	start := time.Now()
 	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
 	if err != nil {
-		return agentStatusResponse{}, err
+		return agentStatusResponse{}, 0, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return agentStatusResponse{}, err
+		return agentStatusResponse{}, 0, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return agentStatusResponse{}, fmt.Errorf("agent returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return agentStatusResponse{}, 0, fmt.Errorf("agent returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var decoded agentStatusResponse
 	if err := json.Unmarshal(body, &decoded); err != nil {
-		return agentStatusResponse{}, err
+		return agentStatusResponse{}, 0, err
 	}
-	return decoded, nil
+	return decoded, time.Since(start).Milliseconds(), nil
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
 	_ = json.NewEncoder(writer).Encode(value)
+}
+
+func buildDiagnostics(output statusOutput) diagnostics {
+	issues := make([]string, 0, 8)
+	severity := "ok"
+	now := time.Now().UTC()
+
+	if !output.Agent.Reachable {
+		severity = "critical"
+		issues = append(issues, "agent_unreachable")
+	}
+
+	runtime := output.Agent.Runtime
+	if runtime != nil {
+		if runtime.LastBatchLatencyMS > 120000 {
+			severity = maxSeverity(severity, "warning")
+			issues = append(issues, "batch_latency_high")
+		}
+		if runtime.BackpressureActive {
+			severity = maxSeverity(severity, "warning")
+			issues = append(issues, "backpressure_active")
+		}
+		if runtime.QueueDepth > int(float64(runtime.QueueCapacity)*0.8) {
+			severity = maxSeverity(severity, "warning")
+			issues = append(issues, "queue_pressure_high")
+		}
+		if runtime.LastDispatchErrorCode != "" {
+			severity = maxSeverity(severity, "warning")
+			issues = append(issues, "last_dispatch_error:"+runtime.LastDispatchErrorCode)
+		}
+		if runtime.DispatchInFlight && runtime.LastBatchSentAt != "" {
+			if sentAt, err := time.Parse(time.RFC3339, runtime.LastBatchSentAt); err == nil {
+				if now.Sub(sentAt) > 2*time.Minute {
+					severity = maxSeverity(severity, "critical")
+					issues = append(issues, "dispatch_inflight_stuck")
+				}
+			}
+		}
+		if runtime.TotalFailedRequests > runtime.TotalCompletedRequests && runtime.TotalFailedRequests > 10 {
+			severity = maxSeverity(severity, "warning")
+			issues = append(issues, "error_rate_elevated")
+		}
+	}
+
+	return diagnostics{
+		Severity: severity,
+		Issues:   issues,
+	}
+}
+
+func maxSeverity(current, next string) string {
+	order := map[string]int{"ok": 0, "warning": 1, "critical": 2}
+	if order[next] > order[current] {
+		return next
+	}
+	return current
 }

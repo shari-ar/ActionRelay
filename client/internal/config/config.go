@@ -32,6 +32,8 @@ type Config struct {
 	CacheTTLMS             int    `json:"cache_ttl_ms"`
 	CacheMaxEntries        int    `json:"cache_max_entries"`
 	BackpressureCooldownMS int    `json:"backpressure_cooldown_ms"`
+	ReliabilityMode        string `json:"reliability_mode"`
+	StaleIfErrorTTLMS      int    `json:"stale_if_error_ttl_ms"`
 	RunStartTimeoutSec     int    `json:"run_start_timeout_sec"`
 	RunWaitTimeoutSec      int    `json:"run_wait_timeout_sec"`
 	PollIntervalMS         int    `json:"poll_interval_ms"`
@@ -56,6 +58,8 @@ func Default() Config {
 		CacheTTLMS:             10000,
 		CacheMaxEntries:        256,
 		BackpressureCooldownMS: 15000,
+		ReliabilityMode:        "fail_closed",
+		StaleIfErrorTTLMS:      60000,
 		RunStartTimeoutSec:     120,
 		RunWaitTimeoutSec:      900,
 		PollIntervalMS:         2000,
@@ -195,6 +199,13 @@ func (c Config) Validate() error {
 	}
 	if c.BackpressureCooldownMS <= 0 {
 		return errors.New("backpressure_cooldown_ms must be > 0")
+	}
+	mode := strings.ToLower(strings.TrimSpace(c.ReliabilityMode))
+	if mode != "fail_closed" && mode != "fail_open" {
+		return errors.New("reliability_mode must be one of: fail_closed, fail_open")
+	}
+	if c.StaleIfErrorTTLMS < 0 {
+		return errors.New("stale_if_error_ttl_ms must be >= 0")
 	}
 	if c.RunStartTimeoutSec <= 0 {
 		return errors.New("run_start_timeout_sec must be > 0")

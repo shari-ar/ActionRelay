@@ -1,9 +1,7 @@
 package proxy
 
 import (
-	"bufio"
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -23,6 +21,7 @@ import (
 const (
 	maxProxyRequestBodyBytes = 1 << 20
 	defaultHTTPSPort         = 443
+	submitTimeout            = 90 * time.Second
 )
 
 var allowedProxyMethods = map[string]struct{}{
@@ -49,6 +48,18 @@ var strippedProxyHeaders = map[string]struct{}{
 	"te":                {},
 	"trailer":           {},
 	"upgrade":           {},
+}
+
+var strippedProxyResponseHeaders = map[string]struct{}{
+	"connection":          {},
+	"proxy-connection":    {},
+	"proxy-authenticate":  {},
+	"proxy-authorization": {},
+	"keep-alive":          {},
+	"transfer-encoding":   {},
+	"te":                  {},
+	"trailer":             {},
+	"upgrade":             {},
 }
 
 type Config struct {
@@ -90,9 +101,13 @@ func (s *Server) handleProxyRequest(writer http.ResponseWriter, request *http.Re
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(request.Body, maxProxyRequestBodyBytes))
+	body, truncated, err := readBoundedBody(request.Body, maxProxyRequestBodyBytes)
 	if err != nil {
 		s.writeProxyError(writer, http.StatusBadRequest, "failed to read proxy request body")
+		return
+	}
+	if truncated {
+		s.writeProxyError(writer, http.StatusRequestEntityTooLarge, "proxy request body exceeds max bytes")
 		return
 	}
 
@@ -107,84 +122,19 @@ func (s *Server) handleProxyRequest(writer http.ResponseWriter, request *http.Re
 }
 
 func (s *Server) handleConnect(writer http.ResponseWriter, request *http.Request) {
-	hijacker, ok := writer.(http.Hijacker)
-	if !ok {
-		s.writeProxyError(writer, http.StatusInternalServerError, "proxy does not support connection hijacking")
-		return
-	}
-
 	hostPort, err := validateConnectAuthority(request.Host, request.RequestURI)
 	if err != nil {
 		s.writeProxyError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	conn, readWriter, err := hijacker.Hijack()
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	if _, err := readWriter.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
-		return
-	}
-	if err := readWriter.Flush(); err != nil {
-		return
-	}
-
-	tlsConn := tls.Server(conn, &tls.Config{GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-		return nil, fmt.Errorf("dynamic MITM certificate issuance is not implemented")
-	}})
-	defer tlsConn.Close()
-	if err := tlsConn.Handshake(); err != nil {
-		log.Printf("actionrelay: CONNECT handshake failed host=%s err=%v", hostPort, err)
-		return
-	}
-
-	reader := bufio.NewReader(tlsConn)
-	for {
-		proxiedRequest, err := http.ReadRequest(reader)
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("actionrelay: CONNECT read failed host=%s err=%v", hostPort, err)
-			}
-			return
-		}
-
-		targetURL, err := httpsTargetURL(proxiedRequest, hostPort)
-		if err != nil {
-			_ = proxiedRequest.Body.Close()
-			_ = writeTunnelHTTPError(tlsConn, http.StatusBadRequest, err.Error())
-			return
-		}
-
-		body, err := io.ReadAll(io.LimitReader(proxiedRequest.Body, maxProxyRequestBodyBytes))
-		_ = proxiedRequest.Body.Close()
-		if err != nil {
-			_ = writeTunnelHTTPError(tlsConn, http.StatusBadRequest, "failed to read tunneled request body")
-			return
-		}
-
-		submission, err := normalizeSubmission(proxiedRequest.Method, targetURL, proxiedRequest.Header, body)
-		if err != nil {
-			_ = writeTunnelHTTPError(tlsConn, http.StatusBadRequest, err.Error())
-			return
-		}
-
-		log.Printf("actionrelay: CONNECT request accepted method=%s url=%s", submission.Method, submission.URL)
-		if err := s.submitAndWriteTunnelResponse(request.Context(), tlsConn, submission); err != nil {
-			log.Printf("actionrelay: CONNECT response failed host=%s err=%v", hostPort, err)
-			return
-		}
-
-		if proxiedRequest.Close {
-			return
-		}
-	}
+	log.Printf("actionrelay: CONNECT rejected target=%s reason=%s", hostPort, "not supported in local proxy mode")
+	s.writeProxyError(writer, http.StatusNotImplemented, "CONNECT tunneling is not supported in this mode; use explicit http/https proxy requests")
 }
 
 func (s *Server) submitAndWriteHTTP(ctx context.Context, writer http.ResponseWriter, submission agent.SubmitRequest) {
-	result, err := s.agent.Submit(ctx, submission)
+	submitCtx, cancel := context.WithTimeout(ctx, submitTimeout)
+	defer cancel()
+	result, err := s.agent.Submit(submitCtx, submission)
 	if err != nil {
 		s.writeProxyError(writer, http.StatusBadGateway, fmt.Sprintf("proxy submit failed: %v", err))
 		return
@@ -195,7 +145,9 @@ func (s *Server) submitAndWriteHTTP(ctx context.Context, writer http.ResponseWri
 }
 
 func (s *Server) submitAndWriteTunnelResponse(ctx context.Context, writer io.Writer, submission agent.SubmitRequest) error {
-	result, err := s.agent.Submit(ctx, submission)
+	submitCtx, cancel := context.WithTimeout(ctx, submitTimeout)
+	defer cancel()
+	result, err := s.agent.Submit(submitCtx, submission)
 	if err != nil {
 		return writeTunnelHTTPError(writer, http.StatusBadGateway, fmt.Sprintf("proxy submit failed: %v", err))
 	}
@@ -387,6 +339,9 @@ func copyHeaders(target http.Header, headers map[string]string) {
 		if strings.TrimSpace(key) == "" || value == "" {
 			continue
 		}
+		if _, stripped := strippedProxyResponseHeaders[strings.ToLower(strings.TrimSpace(key))]; stripped {
+			continue
+		}
 		target.Set(key, value)
 	}
 }
@@ -419,12 +374,16 @@ func writeResultAsHTTP(writer http.ResponseWriter, result protocol.RequestResult
 	if response == nil {
 		return fmt.Errorf("missing response payload")
 	}
+	if response.Status < 100 || response.Status > 599 {
+		return fmt.Errorf("invalid response status %d", response.Status)
+	}
 
 	payload, err := decodeResponseBody(response.Body)
 	if err != nil {
 		return fmt.Errorf("invalid response body: %w", err)
 	}
 	copyHeaders(writer.Header(), response.Headers)
+	writer.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 	writer.WriteHeader(response.Status)
 	_, _ = writer.Write(payload)
 	return nil
@@ -447,6 +406,9 @@ func writeResultToTunnel(writer io.Writer, result protocol.RequestResult) error 
 	if response == nil {
 		return writeTunnelHTTPError(writer, http.StatusBadGateway, "missing response payload")
 	}
+	if response.Status < 100 || response.Status > 599 {
+		return writeTunnelHTTPError(writer, http.StatusBadGateway, fmt.Sprintf("invalid response status %d", response.Status))
+	}
 
 	payload, err := decodeResponseBody(response.Body)
 	if err != nil {
@@ -462,6 +424,9 @@ func writeResultToTunnel(writer io.Writer, result protocol.RequestResult) error 
 	}
 	for key, value := range response.Headers {
 		if strings.TrimSpace(key) == "" || value == "" {
+			continue
+		}
+		if _, stripped := strippedProxyResponseHeaders[strings.ToLower(strings.TrimSpace(key))]; stripped {
 			continue
 		}
 		if _, err := fmt.Fprintf(writer, "%s: %s\r\n", key, value); err != nil {
@@ -507,4 +472,17 @@ func writeProxyErrorResponse(writer http.ResponseWriter, status int, message str
 		"error":     message,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func readBoundedBody(body io.ReadCloser, maxBytes int64) ([]byte, bool, error) {
+	defer body.Close()
+	limited := io.LimitReader(body, maxBytes+1)
+	payload, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(payload)) > maxBytes {
+		return nil, true, nil
+	}
+	return payload, false, nil
 }
