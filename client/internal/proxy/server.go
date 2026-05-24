@@ -41,14 +41,14 @@ var rejectedProxyHeaders = map[string]struct{}{
 }
 
 var strippedProxyHeaders = map[string]struct{}{
-	"host":             {},
-	"connection":       {},
-	"keep-alive":       {},
-	"proxy-connection": {},
+	"host":              {},
+	"connection":        {},
+	"keep-alive":        {},
+	"proxy-connection":  {},
 	"transfer-encoding": {},
-	"te":               {},
-	"trailer":          {},
-	"upgrade":          {},
+	"te":                {},
+	"trailer":           {},
+	"upgrade":           {},
 }
 
 type Config struct {
