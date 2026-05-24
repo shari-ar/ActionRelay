@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 	"actionrelay/client/internal/config"
 	"actionrelay/client/internal/githubapi"
 	"actionrelay/client/internal/protocol"
+	"actionrelay/client/internal/proxy"
 	"actionrelay/client/internal/route"
 )
 
@@ -65,6 +67,7 @@ func printUsage() {
 	fmt.Println("  actionrelay route install --yes [--config .actionrelay/config.json]")
 	fmt.Println("  actionrelay route uninstall --yes [--config .actionrelay/config.json]")
 	fmt.Println("  actionrelay serve [--config .actionrelay/config.json] [--listen 127.0.0.1:8787]")
+	fmt.Println("                 [--proxy-listen 127.0.0.1:8788] [--proxy-enabled=true]")
 	fmt.Println("  actionrelay status [--config .actionrelay/config.json] [--agent http://127.0.0.1:8787]")
 	fmt.Println("  actionrelay fetch [--agent http://127.0.0.1:8787] [--method GET] <url>")
 }
@@ -312,8 +315,12 @@ func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	var configPath string
 	var listenAddr string
+	var proxyListenAddr string
+	var proxyEnabled bool
 	fs.StringVar(&configPath, "config", defaultConfigPath, "Config file path")
 	fs.StringVar(&listenAddr, "listen", "", "Override listen address")
+	fs.StringVar(&proxyListenAddr, "proxy-listen", "", "Override proxy listen address")
+	fs.BoolVar(&proxyEnabled, "proxy-enabled", true, "Enable proxy foundation listener")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -324,9 +331,13 @@ func runServe(args []string) error {
 	}
 	if listenAddr != "" {
 		cfg.AgentListenAddr = listenAddr
-		if err := cfg.Validate(); err != nil {
-			return err
-		}
+	}
+	if proxyListenAddr != "" {
+		cfg.ProxyListenAddr = proxyListenAddr
+	}
+	cfg.ProxyEnabled = proxyEnabled
+	if err := cfg.Validate(); err != nil {
+		return err
 	}
 	routeStatePath, err := config.RouteStatePath(configPath)
 	if err != nil {
@@ -366,6 +377,20 @@ func runServe(args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	go routeAgent.Run(ctx)
+
+	if cfg.ProxyEnabled {
+		proxyServer, err := proxy.NewServer(proxy.Config{ListenAddr: cfg.ProxyListenAddr}, routeAgent)
+		if err != nil {
+			return err
+		}
+		go func() {
+			log.Printf("actionrelay proxy foundation listening on %s", cfg.ProxyListenAddr)
+			if err := http.ListenAndServe(cfg.ProxyListenAddr, proxyServer.Handler()); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("actionrelay: proxy foundation server stopped: %v", err)
+				cancel()
+			}
+		}()
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(writer http.ResponseWriter, request *http.Request) {

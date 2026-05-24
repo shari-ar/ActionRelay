@@ -19,6 +19,8 @@ type Config struct {
 	GitHubTokenEnv         string `json:"github_token_env"`
 	GitHubAPIBaseURL       string `json:"github_api_base_url"`
 	AgentListenAddr        string `json:"agent_listen_addr"`
+	ProxyListenAddr        string `json:"proxy_listen_addr"`
+	ProxyEnabled           bool   `json:"proxy_enabled"`
 	BatchIntervalMS        int    `json:"batch_interval_ms"`
 	RequestTimeoutMS       int    `json:"request_timeout_ms"`
 	MaxRequestBodyBytes    int    `json:"max_request_body_bytes"`
@@ -41,6 +43,8 @@ func Default() Config {
 		GitHubTokenEnv:         "ACTIONRELAY_GITHUB_TOKEN",
 		GitHubAPIBaseURL:       "https://api.github.com",
 		AgentListenAddr:        "127.0.0.1:8787",
+		ProxyListenAddr:        "127.0.0.1:8788",
+		ProxyEnabled:           true,
 		BatchIntervalMS:        1000,
 		RequestTimeoutMS:       8000,
 		MaxRequestBodyBytes:    65536,
@@ -152,6 +156,9 @@ func (c Config) Validate() error {
 	}
 	if err := validateLoopbackListenAddr(c.AgentListenAddr); err != nil {
 		return err
+	}
+	if err := validateLoopbackListenAddr(c.ProxyListenAddr); err != nil {
+		return fmt.Errorf("proxy_listen_addr invalid: %w", err)
 	}
 	if c.BatchIntervalMS <= 0 {
 		return errors.New("batch_interval_ms must be > 0")
