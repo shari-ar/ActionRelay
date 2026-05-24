@@ -22,6 +22,7 @@ import (
 	"actionrelay/client/internal/githubapi"
 	"actionrelay/client/internal/protocol"
 	"actionrelay/client/internal/proxy"
+	"actionrelay/client/internal/proxyplatform"
 	"actionrelay/client/internal/route"
 )
 
@@ -45,6 +46,8 @@ func main() {
 		err = runRoute(os.Args[2:])
 	case "serve":
 		err = runServe(os.Args[2:])
+	case "proxy":
+		err = runProxy(os.Args[2:])
 	case "status":
 		err = runStatus(os.Args[2:])
 	case "fetch":
@@ -66,6 +69,9 @@ func printUsage() {
 	fmt.Println("  actionrelay init --repo owner/repo --workflow actionrelay.yml")
 	fmt.Println("  actionrelay route install --yes [--config .actionrelay/config.json]")
 	fmt.Println("  actionrelay route uninstall --yes [--config .actionrelay/config.json]")
+	fmt.Println("  actionrelay proxy install --yes [--config .actionrelay/config.json]")
+	fmt.Println("  actionrelay proxy uninstall --yes [--config .actionrelay/config.json]")
+	fmt.Println("  actionrelay proxy status [--config .actionrelay/config.json]")
 	fmt.Println("  actionrelay serve [--config .actionrelay/config.json] [--listen 127.0.0.1:8787]")
 	fmt.Println("                 [--proxy-listen 127.0.0.1:8788] [--proxy-enabled=true]")
 	fmt.Println("  actionrelay status [--config .actionrelay/config.json] [--agent http://127.0.0.1:8787]")
@@ -115,6 +121,166 @@ func runRoute(args []string) error {
 	default:
 		return fmt.Errorf("unknown route subcommand %q", args[0])
 	}
+}
+
+func runProxy(args []string) error {
+	if len(args) == 0 {
+		return errors.New("proxy requires a subcommand: install, uninstall, or status")
+	}
+	switch args[0] {
+	case "install":
+		return runProxyInstall(args[1:])
+	case "uninstall":
+		return runProxyUninstall(args[1:])
+	case "status":
+		return runProxyStatus(args[1:])
+	default:
+		return fmt.Errorf("unknown proxy subcommand %q", args[0])
+	}
+}
+
+func runProxyInstall(args []string) error {
+	fs := flag.NewFlagSet("proxy install", flag.ContinueOnError)
+	var configPath string
+	var proxyListenAddr string
+	var yes bool
+	fs.StringVar(&configPath, "config", defaultConfigPath, "Config file path")
+	fs.StringVar(&proxyListenAddr, "proxy-listen", "", "Override proxy listen address recorded in proxy state")
+	fs.BoolVar(&yes, "yes", false, "Confirm local proxy install action")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return errors.New("proxy install does not accept positional arguments")
+	}
+	if !yes {
+		return errors.New("proxy install requires --yes to confirm local authorization")
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return err
+	}
+	if proxyListenAddr != "" {
+		cfg.ProxyListenAddr = proxyListenAddr
+	}
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if err := proxyplatform.Install(cfg.ProxyListenAddr); err != nil {
+		return err
+	}
+
+	statePath, err := config.RouteStatePath(configPath)
+	if err != nil {
+		return err
+	}
+	state, err := route.LoadOrDefault(statePath)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	state.Version = route.StateVersion
+	state.RouteMode = route.ModeWholeDevice
+	state.ProxyInstalled = true
+	state.ProxyListenAddr = cfg.ProxyListenAddr
+	state.Platform = proxyplatform.Detect()
+	state.UpdatedAt = now
+	state.LastAction = "proxy_install"
+	if err := route.Save(statePath, state); err != nil {
+		return err
+	}
+
+	fmt.Printf("proxy installed (%s)\n", statePath)
+	return nil
+}
+
+func runProxyUninstall(args []string) error {
+	fs := flag.NewFlagSet("proxy uninstall", flag.ContinueOnError)
+	var configPath string
+	var yes bool
+	fs.StringVar(&configPath, "config", defaultConfigPath, "Config file path")
+	fs.BoolVar(&yes, "yes", false, "Confirm local proxy uninstall action")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return errors.New("proxy uninstall does not accept positional arguments")
+	}
+	if !yes {
+		return errors.New("proxy uninstall requires --yes to confirm local authorization")
+	}
+	if err := proxyplatform.Uninstall(); err != nil {
+		return err
+	}
+
+	statePath, err := config.RouteStatePath(configPath)
+	if err != nil {
+		return err
+	}
+	state, err := route.LoadOrDefault(statePath)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	state.Version = route.StateVersion
+	state.RouteMode = route.ModeWholeDevice
+	state.ProxyInstalled = false
+	state.ProxyListenAddr = ""
+	state.Platform = proxyplatform.Detect()
+	state.UpdatedAt = now
+	state.LastAction = "proxy_uninstall"
+	if err := route.Save(statePath, state); err != nil {
+		return err
+	}
+
+	fmt.Printf("proxy uninstalled (%s)\n", statePath)
+	return nil
+}
+
+func runProxyStatus(args []string) error {
+	fs := flag.NewFlagSet("proxy status", flag.ContinueOnError)
+	var configPath string
+	fs.StringVar(&configPath, "config", defaultConfigPath, "Config file path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return errors.New("proxy status does not accept positional arguments")
+	}
+
+	statePath, err := config.RouteStatePath(configPath)
+	if err != nil {
+		return err
+	}
+	state, err := route.LoadOrDefault(statePath)
+	if err != nil {
+		return err
+	}
+	platformRuntime := proxyplatform.Status()
+	supported := platformRuntime.Supported
+	supportedError := platformRuntime.SupportedError
+	output := map[string]any{
+		"timestamp":        time.Now().UTC().Format(time.RFC3339),
+		"route_state_path": statePath,
+		"proxy": map[string]any{
+			"installed":       state.ProxyInstalled,
+			"listen_addr":     state.ProxyListenAddr,
+			"platform":        state.Platform,
+			"supported":       supported,
+			"supported_error": supportedError,
+			"last_action":     state.LastAction,
+		},
+		"platform_runtime": platformRuntime,
+	}
+	formatted, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return fmt.Errorf("format proxy status response: %w", err)
+	}
+	fmt.Println(string(formatted))
+	return nil
 }
 
 func runRouteInstall(args []string) error {
