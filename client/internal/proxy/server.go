@@ -154,20 +154,20 @@ func (s *Server) handleConnect(writer http.ResponseWriter, request *http.Request
 		targetURL, err := httpsTargetURL(proxiedRequest, hostPort)
 		if err != nil {
 			_ = proxiedRequest.Body.Close()
-			_ = s.writeTunnelHTTPError(tlsConn, http.StatusBadRequest, err.Error())
+			_ = writeTunnelHTTPError(tlsConn, http.StatusBadRequest, err.Error())
 			return
 		}
 
 		body, err := io.ReadAll(io.LimitReader(proxiedRequest.Body, maxProxyRequestBodyBytes))
 		_ = proxiedRequest.Body.Close()
 		if err != nil {
-			_ = s.writeTunnelHTTPError(tlsConn, http.StatusBadRequest, "failed to read tunneled request body")
+			_ = writeTunnelHTTPError(tlsConn, http.StatusBadRequest, "failed to read tunneled request body")
 			return
 		}
 
 		submission, err := normalizeSubmission(proxiedRequest.Method, targetURL, proxiedRequest.Header, body)
 		if err != nil {
-			_ = s.writeTunnelHTTPError(tlsConn, http.StatusBadRequest, err.Error())
+			_ = writeTunnelHTTPError(tlsConn, http.StatusBadRequest, err.Error())
 			return
 		}
 
@@ -197,7 +197,7 @@ func (s *Server) submitAndWriteHTTP(ctx context.Context, writer http.ResponseWri
 func (s *Server) submitAndWriteTunnelResponse(ctx context.Context, writer io.Writer, submission agent.SubmitRequest) error {
 	result, err := s.agent.Submit(ctx, submission)
 	if err != nil {
-		return s.writeTunnelHTTPError(writer, http.StatusBadGateway, fmt.Sprintf("proxy submit failed: %v", err))
+		return writeTunnelHTTPError(writer, http.StatusBadGateway, fmt.Sprintf("proxy submit failed: %v", err))
 	}
 	return writeResultToTunnel(writer, result)
 }
@@ -475,7 +475,7 @@ func writeResultToTunnel(writer io.Writer, result protocol.RequestResult) error 
 	return err
 }
 
-func (s *Server) writeTunnelHTTPError(writer io.Writer, status int, message string) error {
+func writeTunnelHTTPError(writer io.Writer, status int, message string) error {
 	payload, _ := json.Marshal(map[string]any{
 		"ok":        false,
 		"error":     message,
