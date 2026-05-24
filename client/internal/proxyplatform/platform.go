@@ -307,7 +307,8 @@ func installMacOSProxy(host, port string) error {
 			_ = uninstallMacOSProxy()
 			return fmt.Errorf("failed to enable secure web proxy for %q: %w", service, err)
 		}
-		if err := runCommand("networksetup", "-setproxybypassdomains", service, defaultBypassEntries...); err != nil {
+		bypassArgs := append([]string{"-setproxybypassdomains", service}, defaultBypassEntries...)
+		if err := runCommand("networksetup", bypassArgs...); err != nil {
 			_ = uninstallMacOSProxy()
 			return fmt.Errorf("failed to set bypass domains for %q: %w", service, err)
 		}
