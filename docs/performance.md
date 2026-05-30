@@ -36,15 +36,41 @@ The worker should:
 
 ## Default Budgets
 
-Initial defaults should be conservative:
+Stable desktop defaults:
 
 - Batch interval: 1 second.
 - Request body: 64 KiB per request.
 - Response body: 64 KiB per request.
 - Request timeout: 8 seconds.
-- Worker fetch concurrency: low single digits.
-- Outstanding batches: very low by default.
-- Artifact retention: shortest practical value.
+- Worker fetch concurrency: 4 (bounded by 8).
+- Max batch requests: 32.
+- Max batch bytes: 256 KiB.
+- Max queue requests: 256.
+- Cache TTL: 10 seconds.
+- Cache max entries: 256.
+- Backpressure cooldown: 15 seconds.
+- Reliability mode: `fail_closed` by default.
+- Stale-if-error fallback: disabled by default (`0`).
+
+## Stable Guardrails
+
+Runtime configuration is validated with bounded production ranges to keep
+behavior predictable:
+
+- `batch_interval_ms`: `250..5000`
+- `request_timeout_ms`: `1000..30000`
+- `max_request_body_bytes`: `1024..1048576`
+- `max_response_bytes`: `1024..1048576`
+- `max_batch_requests`: `1..64`
+- `max_batch_bytes`: `16384..1048576`
+- `max_queue_requests`: `32..2048`
+- `cache_ttl_ms`: `0..60000`
+- `cache_max_entries`: `0..1024`
+- `backpressure_cooldown_ms`: `1000..120000`
+- `stale_if_error_ttl_ms`: `0..300000`
+- `run_start_timeout_sec`: `30..600`
+- `run_wait_timeout_sec`: `60..1800`
+- `poll_interval_ms`: `500..10000`
 
 ## Latency Reality
 

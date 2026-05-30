@@ -68,6 +68,14 @@ This gate verifies:
 - Release workflow still builds cross-platform assets and uploads checksums.
 - Protocol/schema invariants required by the desktop client remain unchanged.
 - Core release and diagnostics documentation coverage remains present.
+- Operator guidance exists for operations, compatibility, and recovery.
+- Explicit product limitations remain documented and indexed.
+- Final pre-`v1.0` desktop validation checklist is documented and indexed.
 
 This keeps desktop stabilization changes within the GitHub-native architecture
 and helps catch regressions before tagging a release.
+
+## Pre-v1.0 Validation
+
+Before `v1.0`, run the desktop final validation process documented in
+`final-validation.md`.

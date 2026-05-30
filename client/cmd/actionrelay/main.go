@@ -64,7 +64,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println("ActionRelay Phase 3")
+	fmt.Println("ActionRelay v0.5")
 	fmt.Println("Usage:")
 	fmt.Println("  actionrelay init --repo owner/repo --workflow actionrelay.yml")
 	fmt.Println("  actionrelay route install --yes [--config .actionrelay/config.json]")

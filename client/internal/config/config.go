@@ -10,9 +10,34 @@ import (
 	"strings"
 )
 
-const maxWorkerConcurrencyLimit = 8
+const (
+	maxWorkerConcurrencyLimit = 8
+	minBatchIntervalMS        = 250
+	maxBatchIntervalMS        = 5000
+	minRequestTimeoutMS       = 1000
+	maxRequestTimeoutMS       = 30000
+	minBodyBytes              = 1024
+	maxBodyBytes              = 1 << 20
+	maxBatchRequestsLimit     = 64
+	minBatchBytes             = 16 << 10
+	maxBatchBytes             = 1 << 20
+	minQueueRequests          = 32
+	maxQueueRequests          = 2048
+	maxCacheTTLMS             = 60000
+	maxCacheEntries           = 1024
+	minBackpressureCooldownMS = 1000
+	maxBackpressureCooldownMS = 120000
+	maxStaleIfErrorTTLMS      = 300000
+	minRunStartTimeoutSec     = 30
+	maxRunStartTimeoutSec     = 600
+	minRunWaitTimeoutSec      = 60
+	maxRunWaitTimeoutSec      = 1800
+	minPollIntervalMS         = 500
+	maxPollIntervalMS         = 10000
+)
 
 type Config struct {
+	ConfigVersion          int    `json:"config_version"`
 	Repo                   string `json:"repo"`
 	Workflow               string `json:"workflow"`
 	WorkflowRef            string `json:"workflow_ref"`
@@ -41,6 +66,7 @@ type Config struct {
 
 func Default() Config {
 	return Config{
+		ConfigVersion:          1,
 		WorkflowRef:            "main",
 		GitHubTokenEnv:         "ACTIONRELAY_GITHUB_TOKEN",
 		GitHubAPIBaseURL:       "https://api.github.com",
@@ -59,7 +85,7 @@ func Default() Config {
 		CacheMaxEntries:        256,
 		BackpressureCooldownMS: 15000,
 		ReliabilityMode:        "fail_closed",
-		StaleIfErrorTTLMS:      60000,
+		StaleIfErrorTTLMS:      0,
 		RunStartTimeoutSec:     120,
 		RunWaitTimeoutSec:      900,
 		PollIntervalMS:         2000,
@@ -101,6 +127,10 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(content, &cfg); err != nil {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
+	if cfg.ConfigVersion == 0 {
+		cfg.ConfigVersion = 1
+	}
+	cfg.normalize()
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -108,6 +138,7 @@ func Load(path string) (Config, error) {
 }
 
 func Save(path string, cfg Config) error {
+	cfg.normalize()
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
@@ -146,6 +177,9 @@ func (c Config) RepoOwnerAndName() (string, string, error) {
 }
 
 func (c Config) Validate() error {
+	if c.ConfigVersion != 1 {
+		return fmt.Errorf("config_version must be 1")
+	}
 	if strings.TrimSpace(c.Repo) == "" {
 		return errors.New("repo is required")
 	}
@@ -164,17 +198,17 @@ func (c Config) Validate() error {
 	if err := validateLoopbackListenAddr(c.ProxyListenAddr); err != nil {
 		return fmt.Errorf("proxy_listen_addr invalid: %w", err)
 	}
-	if c.BatchIntervalMS <= 0 {
-		return errors.New("batch_interval_ms must be > 0")
+	if c.BatchIntervalMS < minBatchIntervalMS || c.BatchIntervalMS > maxBatchIntervalMS {
+		return fmt.Errorf("batch_interval_ms must be between %d and %d", minBatchIntervalMS, maxBatchIntervalMS)
 	}
-	if c.RequestTimeoutMS <= 0 {
-		return errors.New("request_timeout_ms must be > 0")
+	if c.RequestTimeoutMS < minRequestTimeoutMS || c.RequestTimeoutMS > maxRequestTimeoutMS {
+		return fmt.Errorf("request_timeout_ms must be between %d and %d", minRequestTimeoutMS, maxRequestTimeoutMS)
 	}
-	if c.MaxRequestBodyBytes <= 0 {
-		return errors.New("max_request_body_bytes must be > 0")
+	if c.MaxRequestBodyBytes < minBodyBytes || c.MaxRequestBodyBytes > maxBodyBytes {
+		return fmt.Errorf("max_request_body_bytes must be between %d and %d", minBodyBytes, maxBodyBytes)
 	}
-	if c.MaxResponseBytes <= 0 {
-		return errors.New("max_response_bytes must be > 0")
+	if c.MaxResponseBytes < minBodyBytes || c.MaxResponseBytes > maxBodyBytes {
+		return fmt.Errorf("max_response_bytes must be between %d and %d", minBodyBytes, maxBodyBytes)
 	}
 	if c.WorkerConcurrency <= 0 {
 		return errors.New("worker_concurrency must be > 0")
@@ -182,41 +216,45 @@ func (c Config) Validate() error {
 	if c.WorkerConcurrency > maxWorkerConcurrencyLimit {
 		return fmt.Errorf("worker_concurrency must be <= %d", maxWorkerConcurrencyLimit)
 	}
-	if c.MaxBatchRequests <= 0 {
-		return errors.New("max_batch_requests must be > 0")
+	if c.MaxBatchRequests <= 0 || c.MaxBatchRequests > maxBatchRequestsLimit {
+		return fmt.Errorf("max_batch_requests must be between 1 and %d", maxBatchRequestsLimit)
 	}
-	if c.MaxBatchBytes <= 0 {
-		return errors.New("max_batch_bytes must be > 0")
+	if c.MaxBatchBytes < minBatchBytes || c.MaxBatchBytes > maxBatchBytes {
+		return fmt.Errorf("max_batch_bytes must be between %d and %d", minBatchBytes, maxBatchBytes)
 	}
-	if c.MaxQueueRequests <= 0 {
-		return errors.New("max_queue_requests must be > 0")
+	if c.MaxQueueRequests < minQueueRequests || c.MaxQueueRequests > maxQueueRequests {
+		return fmt.Errorf("max_queue_requests must be between %d and %d", minQueueRequests, maxQueueRequests)
 	}
-	if c.CacheTTLMS < 0 {
-		return errors.New("cache_ttl_ms must be >= 0")
+	if c.CacheTTLMS < 0 || c.CacheTTLMS > maxCacheTTLMS {
+		return fmt.Errorf("cache_ttl_ms must be between 0 and %d", maxCacheTTLMS)
 	}
-	if c.CacheMaxEntries < 0 {
-		return errors.New("cache_max_entries must be >= 0")
+	if c.CacheMaxEntries < 0 || c.CacheMaxEntries > maxCacheEntries {
+		return fmt.Errorf("cache_max_entries must be between 0 and %d", maxCacheEntries)
 	}
-	if c.BackpressureCooldownMS <= 0 {
-		return errors.New("backpressure_cooldown_ms must be > 0")
+	if c.BackpressureCooldownMS < minBackpressureCooldownMS || c.BackpressureCooldownMS > maxBackpressureCooldownMS {
+		return fmt.Errorf("backpressure_cooldown_ms must be between %d and %d", minBackpressureCooldownMS, maxBackpressureCooldownMS)
 	}
 	mode := strings.ToLower(strings.TrimSpace(c.ReliabilityMode))
 	if mode != "fail_closed" && mode != "fail_open" {
 		return errors.New("reliability_mode must be one of: fail_closed, fail_open")
 	}
-	if c.StaleIfErrorTTLMS < 0 {
-		return errors.New("stale_if_error_ttl_ms must be >= 0")
+	if c.StaleIfErrorTTLMS < 0 || c.StaleIfErrorTTLMS > maxStaleIfErrorTTLMS {
+		return fmt.Errorf("stale_if_error_ttl_ms must be between 0 and %d", maxStaleIfErrorTTLMS)
 	}
-	if c.RunStartTimeoutSec <= 0 {
-		return errors.New("run_start_timeout_sec must be > 0")
+	if c.RunStartTimeoutSec < minRunStartTimeoutSec || c.RunStartTimeoutSec > maxRunStartTimeoutSec {
+		return fmt.Errorf("run_start_timeout_sec must be between %d and %d", minRunStartTimeoutSec, maxRunStartTimeoutSec)
 	}
-	if c.RunWaitTimeoutSec <= 0 {
-		return errors.New("run_wait_timeout_sec must be > 0")
+	if c.RunWaitTimeoutSec < minRunWaitTimeoutSec || c.RunWaitTimeoutSec > maxRunWaitTimeoutSec {
+		return fmt.Errorf("run_wait_timeout_sec must be between %d and %d", minRunWaitTimeoutSec, maxRunWaitTimeoutSec)
 	}
-	if c.PollIntervalMS <= 0 {
-		return errors.New("poll_interval_ms must be > 0")
+	if c.PollIntervalMS < minPollIntervalMS || c.PollIntervalMS > maxPollIntervalMS {
+		return fmt.Errorf("poll_interval_ms must be between %d and %d", minPollIntervalMS, maxPollIntervalMS)
 	}
 	return nil
+}
+
+func (c *Config) normalize() {
+	c.ReliabilityMode = strings.ToLower(strings.TrimSpace(c.ReliabilityMode))
 }
 
 func validateLoopbackListenAddr(listenAddr string) error {

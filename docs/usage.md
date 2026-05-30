@@ -502,6 +502,12 @@ Long-running service hardening:
 - Shutdown now drains both listeners together on signal-driven cancellation,
   reducing orphaned background listener behavior.
 
+For structured operator playbooks, see:
+
+- `operations.md` for normal lifecycle and upgrade operations.
+- `compatibility.md` for supported traffic/platform boundaries.
+- `recovery.md` for failure recovery procedures.
+
 ## Manual Test Mode
 
 Manual fetch mode remains useful for testing without installing the route:

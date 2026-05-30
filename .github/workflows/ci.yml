@@ -73,3 +73,6 @@ jobs:
 
       - name: Validate release readiness invariants
         run: node scripts/ci/validate-release-readiness.mjs
+
+      - name: Validate final pre-v1.0 readiness
+        run: node scripts/ci/validate-final-readiness.mjs

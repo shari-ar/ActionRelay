@@ -64,16 +64,39 @@ async function validateProtocolInvariants() {
     resultSchema?.properties?.protocol?.const === "actionrelay.result_package.v1",
     "result-package schema: protocol const mismatch",
   );
+
+  const protocolTypes = await readFile(path.join(repoRoot, "client", "internal", "protocol", "types.go"), "utf8");
+  assert(
+    protocolTypes.includes('RequestBatchProtocol  = "actionrelay.request_batch.v1"'),
+    "client/internal/protocol/types.go: request batch protocol constant mismatch",
+  );
+  assert(
+    protocolTypes.includes('ResultPackageProtocol = "actionrelay.result_package.v1"'),
+    "client/internal/protocol/types.go: result package protocol constant mismatch",
+  );
+}
+
+async function validateConfigContract() {
+  const configSource = await readFile(path.join(repoRoot, "client", "internal", "config", "config.go"), "utf8");
+  assert(configSource.includes("ConfigVersion"), "config.go: missing ConfigVersion field");
+  assert(configSource.includes("ConfigVersion:          1"), "config.go: default config version must be 1");
+  assert(configSource.includes("config_version must be 1"), "config.go: must enforce config version contract");
 }
 
 async function validateDocsCoverage() {
   const usage = await readFile(path.join(repoRoot, "docs", "usage.md"), "utf8");
   const release = await readFile(path.join(repoRoot, "docs", "release.md"), "utf8");
+  const limitations = await readFile(path.join(repoRoot, "docs", "limitations.md"), "utf8");
+  const docsIndex = await readFile(path.join(repoRoot, "docs", "README.md"), "utf8");
 
   assert(usage.includes("actionrelay status"), "docs/usage.md: missing status usage guidance");
   assert(usage.includes("diagnostics"), "docs/usage.md: missing diagnostics guidance");
   assert(release.includes("Release Flow"), "docs/release.md: missing release flow section");
   assert(release.includes("CI Coverage"), "docs/release.md: missing CI coverage section");
+  assert(docsIndex.includes("`limitations.md`"), "docs/README.md: missing limitations index entry");
+  assert(limitations.includes("CONNECT tunneling is not supported"), "docs/limitations.md: missing CONNECT limitation");
+  assert(limitations.includes("GitHub Actions only"), "docs/limitations.md: missing GitHub Actions invariant");
+  assert(limitations.includes("GitHub-domain constrained"), "docs/limitations.md: missing GitHub-domain invariant");
 }
 
 async function main() {
@@ -81,6 +104,7 @@ async function main() {
   await validateCIWorkflow(goVersion);
   await validateReleaseWorkflow();
   await validateProtocolInvariants();
+  await validateConfigContract();
   await validateDocsCoverage();
 }
 

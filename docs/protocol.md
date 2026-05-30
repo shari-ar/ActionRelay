@@ -8,6 +8,14 @@ result package for each batch.
 
 Target schema path: `schemas/request-batch.v1.json`
 
+Protocol compatibility contract for the stable `v1.x` line:
+
+- Client request protocol constant remains `actionrelay.request_batch.v1`.
+- Worker result protocol constant remains `actionrelay.result_package.v1`.
+- Schema protocol constants must remain aligned with client constants.
+- Any future incompatible protocol change requires a new protocol version
+  string and explicit migration path.
+
 ```json
 {
   "protocol": "actionrelay.request_batch.v1",
