@@ -12,6 +12,7 @@ This document is the authoritative list of current desktop product limitations.
 
 - Supported model is bounded request/response HTTP(S) traffic.
 - `CONNECT` tunneling is not supported in current local proxy mode.
+- CONNECT tunneling is not supported.
 - UDP and arbitrary raw TCP tunneling are not supported.
 - QUIC/HTTP3 native transport paths are not supported.
 - Long-lived bidirectional streaming protocols are not supported.
