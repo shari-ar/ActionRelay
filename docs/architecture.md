@@ -1,13 +1,13 @@
 # Architecture
 
-ActionRelay is a whole-device network route built around local batching and a
-GitHub Actions worker. The local Go agent captures eligible requests, queues
-them, sends one batch per second when work exists, and applies the returned
-result package to waiting local callers.
+ActionRelay is a desktop HTTP(S) proxy relay built around local batching and a
+GitHub Actions worker. The local Go agent accepts eligible proxy requests,
+queues them, sends one batch per second when work exists, and applies the
+returned result package to waiting local callers.
 
 ## Goals
 
-- Route eligible whole-device HTTP(S) requests through ActionRelay.
+- Route eligible desktop HTTP(S) proxy traffic through ActionRelay.
 - Minimize GitHub Actions load with one-second client-side batching.
 - Let one server-side run process more than one request per package.
 - Return batched responses as quickly as GitHub Actions allows.
@@ -15,12 +15,12 @@ result package to waiting local callers.
 
 ## Components
 
-### Local Route Agent
+### Local Agent
 
-The Go agent runs on the user's machine and owns the local route. It is
+The Go agent runs on the user's machine and owns the local listener surface. It is
 responsible for:
 
-- Capturing eligible device requests.
+- Accepting eligible HTTP proxy requests.
 - Converting traffic into request records.
 - Queueing records until the next one-second batch tick.
 - Enforcing method, URL, header, body, count, and byte limits.
@@ -67,9 +67,9 @@ the GitHub Contents API on `api.github.com`.
 7. Agent maps each result back to its waiting local request.
 ```
 
-## Route Scope
+## Proxy Scope
 
-ActionRelay is a whole-device route for eligible request records. It should not
+ActionRelay is a local proxy relay for eligible request records. It should not
 pretend to support every network primitive. Unsupported traffic should fail fast
 with a local error instead of hanging.
 
@@ -85,7 +85,7 @@ Likely unsupported or restricted traffic:
 
 Expected failures include:
 
-- Local route setup failure.
+- Local proxy/setup failure.
 - Batch queue overflow.
 - GitHub Actions queue delay.
 - Dispatch, polling, or result publication failure.

@@ -1,7 +1,7 @@
 # Release Automation
 
-ActionRelay Phase 5 uses GitHub Actions to build and publish versioned client
-binaries with checksums.
+ActionRelay uses GitHub Actions to build and publish versioned client binaries
+with checksums.
 
 ## Versioning Model
 
@@ -63,7 +63,7 @@ ActionRelay GitHub token.
    tag.
 3. Workflow uploads assets directly to the published GitHub Release.
 
-## v0.4 Step 5 Validation Gate
+## Release Readiness Validation Gate
 
 ActionRelay now includes an explicit release-readiness validation gate in CI:
 

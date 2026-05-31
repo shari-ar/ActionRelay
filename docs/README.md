@@ -1,12 +1,12 @@
 # ActionRelay Documentation
 
-ActionRelay routes eligible whole-device requests through a local Go agent. The
-agent batches pending requests once per second, sends the batch to GitHub Actions,
-and receives one compact result package back.
+ActionRelay accepts eligible HTTP(S) proxy requests through a local Go agent.
+The agent batches pending requests once per second, sends the batch to GitHub
+Actions, and receives one compact result package back.
 
 ## Documents
 
-- `architecture.md`: Whole-device route agent, server worker, and batch flow.
+- `architecture.md`: Local proxy agent, server worker, and batch flow.
 - `protocol.md`: JSON envelopes for request batches and result packages.
 - `usage.md`: Route setup, operation, and status commands.
 - `operations.md`: Day-to-day operator workflow and lifecycle commands.

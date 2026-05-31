@@ -1,8 +1,9 @@
 # ActionRelay
 
-ActionRelay is a lightweight whole-device network route relay. A local Go client routes
-eligible device traffic into a small request queue, sends pending requests to the
-server side once per second, and receives compact batched results back.
+ActionRelay is a lightweight GitHub-native desktop HTTP(S) proxy relay. A local
+Go client accepts eligible proxy traffic, places pending requests into a small
+queue, sends work to the server side once per second, and receives compact
+batched results back.
 
 The server side is a GitHub Actions based worker/control plane. It can receive a
 batch containing more than one client request, process the batch, and return one
@@ -10,7 +11,7 @@ result package to the client.
 
 ## What It Is
 
-- A local Go route agent for whole-device eligible HTTP(S) requests.
+- A local Go proxy/relay agent for eligible HTTP(S) requests.
 - A one-second batching loop that sends work only when requests are pending.
 - A GitHub REST API control plane for upload, dispatch, polling, and results.
 - A Node.js 20 worker that processes request batches with strict limits.
@@ -23,9 +24,9 @@ result package to the client.
 - Not an anonymous network.
 - Not intended for streaming, bulk downloads, or high-volume scraping.
 
-ActionRelay behaves like a constrained whole-device network route, not a general
-TCP/UDP tunnel. Traffic must be converted into bounded request records before it
-can be batched and relayed.
+ActionRelay behaves like a constrained desktop HTTP(S) proxy relay, not a
+general TCP/UDP tunnel. Traffic must be converted into bounded request records
+before it can be batched and relayed.
 
 ActionRelay is positioned as a GitHub-native desktop HTTP(S) proxy relay, not a
 universal tunnel. The definitive support boundary is documented in
@@ -33,7 +34,7 @@ universal tunnel. The definitive support boundary is documented in
 
 ## Core Flow
 
-1. The local agent captures eligible whole-device requests.
+1. The local agent accepts eligible proxy requests.
 2. Requests are queued locally for the next batch tick.
 3. Once per second, if the queue is non-empty, the client sends one batch package.
 4. The GitHub Actions worker processes all requests in that batch.
@@ -41,7 +42,7 @@ universal tunnel. The definitive support boundary is documented in
 6. The client downloads the package and releases responses to local callers.
 
 ```text
-device traffic -> local route agent -> 1s request batch -> GitHub Actions worker
+proxy traffic -> local agent -> 1s request batch -> GitHub Actions worker
        ^                                                               |
        |                                                               v
        +--------------- batched responses <- result package <----------+
@@ -67,14 +68,13 @@ package containing all completed results and structured errors.
 - Keep workflows and artifacts short-lived.
 - Prefer clear local errors over long waits.
 
-## Planned Repository Layout
+## Repository Layout
 
 ```text
 .
-|-- client/                 # Go whole-device route agent and CLI controls
+|-- client/                 # Go client, local proxy agent, and CLI controls
 |-- worker/                 # Node.js 20 batch worker
 |-- schemas/                # JSON schemas for batches and results
-|-- protocol/               # Protocol examples and versioning
 |-- .github/workflows/      # GitHub Actions workflows
 |-- tests/                  # Unit, integration, and route-flow tests
 |-- docs/                   # User and maintainer documentation
@@ -85,26 +85,26 @@ package containing all completed results and structured errors.
 
 ## Intended Usage
 
-Command names may change during implementation, but the target flow is:
+Typical local workflow:
 
 ```sh
 actionrelay init --repo owner/repo --workflow actionrelay.yml
-actionrelay route install --yes --config .actionrelay/config.json
+actionrelay proxy install --yes --config .actionrelay/config.json
 actionrelay serve --config .actionrelay/config.json
 actionrelay status --config .actionrelay/config.json
-actionrelay fetch https://api.example.com/status
+actionrelay fetch https://api.github.com
 ```
 
 Manual fetch mode is available for testing:
 
 ```sh
-actionrelay fetch https://api.example.com/status
+actionrelay fetch https://api.github.com
 ```
 
 ## Documentation
 
 - `docs/README.md` is the documentation index.
-- `docs/architecture.md` explains the whole-device route and batch design.
+- `docs/architecture.md` explains the local proxy agent and batch design.
 - `docs/protocol.md` defines batch request and result package envelopes.
 - `docs/usage.md` describes local route setup and operation.
 - `docs/compatibility.md` describes supported platforms and traffic model.
@@ -114,6 +114,9 @@ actionrelay fetch https://api.example.com/status
 - `docs/security.md` covers local routing, sensitive traffic, and guardrails.
 - `docs/development.md` outlines contributor conventions.
 - `docs/release.md` describes CI and versioned release automation.
+- `docs/operations.md` describes normal runtime and lifecycle procedures.
+- `docs/recovery.md` describes failure recovery procedures.
+- `docs/final-validation.md` defines the stable release validation checklist.
 - `docs/roadmap.md` tracks implementation phases.
 
 ## Release Assets
@@ -124,9 +127,8 @@ verification.
 
 ## Project Status
 
-ActionRelay is in the documentation and design phase. The first implementation
-milestone is a minimal local-route-to-queued-batch-to-GitHub-Actions flow with
-strict limits and clear errors.
+ActionRelay has an implemented desktop client, GitHub Actions worker, release
+automation, and operational documentation for the stable desktop product model.
 
 ## License
 

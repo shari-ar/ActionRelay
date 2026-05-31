@@ -1,6 +1,6 @@
 # Usage
 
-ActionRelay is intended to run as a local whole-device route agent. Eligible
+ActionRelay is intended to run as a local HTTP(S) proxy agent. Eligible
 requests are queued locally, sent to the server side once per second, processed
 as a batch, and returned as one result package.
 
@@ -9,8 +9,8 @@ as a batch, and returned as one result package.
 - GitHub repository with the ActionRelay workflow.
 - GitHub Actions enabled.
 - GitHub token for workflow dispatch, run read, and results branch read.
-- Local ActionRelay Go route agent.
-- Permission to install or configure a local route on the device.
+- Local ActionRelay Go client.
+- Permission to configure a local proxy on the device.
 
 Boundary reminder:
 
@@ -30,7 +30,7 @@ Every user needs to:
 3. Create a GitHub personal access token (PAT) with the required permissions.
 4. Set `ACTIONRELAY_GITHUB_TOKEN` on the machine that will run the client.
 5. Initialize ActionRelay against the repository that hosts the workflow.
-6. Run a manual fetch test before starting the local route agent.
+6. Run a manual fetch test before starting the local proxy agent.
 
 ### Pick The Correct Release Asset
 
@@ -112,26 +112,38 @@ cd C:\ActionRelay
 .\actionrelay.exe fetch https://api.github.com
 ```
 
-15. If the manual test succeeds, install local route state:
+15. If the manual test succeeds, optionally record local route state:
 
 ```powershell
 .\actionrelay.exe route install --yes --config .actionrelay/config.json
 ```
 
-16. Start the local route agent:
+16. Install system proxy integration:
+
+```powershell
+.\actionrelay.exe proxy install --yes --config .actionrelay/config.json
+```
+
+17. Start the local proxy agent:
 
 ```powershell
 .\actionrelay.exe serve --config .actionrelay/config.json
 ```
 
-17. In a second PowerShell window, check runtime status:
+18. In a second PowerShell window, check runtime status:
 
 ```powershell
 cd C:\ActionRelay
 .\actionrelay.exe status --config .actionrelay/config.json
 ```
 
-18. When finished, remove route state:
+19. When finished, remove proxy integration:
+
+```powershell
+.\actionrelay.exe proxy uninstall --yes --config .actionrelay/config.json
+```
+
+20. Remove recorded route state if you used it:
 
 ```powershell
 .\actionrelay.exe route uninstall --yes --config .actionrelay/config.json
@@ -209,26 +221,38 @@ echo "$ACTIONRELAY_GITHUB_TOKEN"
 ./actionrelay fetch https://api.github.com
 ```
 
-13. If the manual test succeeds, install local route state:
+13. If the manual test succeeds, optionally record local route state:
 
 ```sh
 ./actionrelay route install --yes --config .actionrelay/config.json
 ```
 
-14. Start the local route agent:
+14. Install system proxy integration:
+
+```sh
+./actionrelay proxy install --yes --config .actionrelay/config.json
+```
+
+15. Start the local proxy agent:
 
 ```sh
 ./actionrelay serve --config .actionrelay/config.json
 ```
 
-15. In a second Terminal window, check runtime status:
+16. In a second Terminal window, check runtime status:
 
 ```sh
 cd ~/actionrelay
 ./actionrelay status --config .actionrelay/config.json
 ```
 
-16. When finished, remove route state:
+17. When finished, remove proxy integration:
+
+```sh
+./actionrelay proxy uninstall --yes --config .actionrelay/config.json
+```
+
+18. Remove recorded route state if you used it:
 
 ```sh
 ./actionrelay route uninstall --yes --config .actionrelay/config.json
@@ -306,26 +330,42 @@ echo "$ACTIONRELAY_GITHUB_TOKEN"
 ./actionrelay fetch https://api.github.com
 ```
 
-13. If the manual test succeeds, install local route state:
+13. If the manual test succeeds, optionally record local route state:
 
 ```sh
 ./actionrelay route install --yes --config .actionrelay/config.json
 ```
 
-14. Start the local route agent:
+14. Install proxy integration.
+
+- Linux note: the current implementation updates proxy-related environment
+  variables for the running user/session model; it does not integrate with every
+  Linux desktop environment automatically.
+
+```sh
+./actionrelay proxy install --yes --config .actionrelay/config.json
+```
+
+15. Start the local proxy agent:
 
 ```sh
 ./actionrelay serve --config .actionrelay/config.json
 ```
 
-15. In a second terminal, check runtime status:
+16. In a second terminal, check runtime status:
 
 ```sh
 cd ~/actionrelay
 ./actionrelay status --config .actionrelay/config.json
 ```
 
-16. When finished, remove route state:
+17. When finished, remove proxy integration:
+
+```sh
+./actionrelay proxy uninstall --yes --config .actionrelay/config.json
+```
+
+18. Remove recorded route state if you used it:
 
 ```sh
 ./actionrelay route uninstall --yes --config .actionrelay/config.json
@@ -412,12 +452,13 @@ echo "export ACTIONRELAY_GITHUB_TOKEN='your_token_here'" >> ~/.zshrc
 source ~/.zshrc
 ```
 
-## Start The Route Agent
+## Start The Client
 
-Target commands:
+Typical commands:
 
 ```sh
 actionrelay init --repo owner/repo --workflow actionrelay.yml
+actionrelay proxy install --yes --config .actionrelay/config.json
 actionrelay route install --yes --config .actionrelay/config.json
 actionrelay serve --config .actionrelay/config.json
 actionrelay status --config .actionrelay/config.json
@@ -425,9 +466,9 @@ actionrelay status --config .actionrelay/config.json
 
 ## Runtime Behavior
 
-The agent should:
+The client should:
 
-- Capture eligible whole-device requests.
+- Accept eligible proxy requests.
 - Classify requests and reject unsupported traffic locally.
 - Queue requests locally.
 - Deduplicate safe identical requests in each batch cycle.
@@ -437,7 +478,7 @@ The agent should:
 - Clamp worker concurrency to a low bounded limit.
 - Apply temporary local backpressure when GitHub Actions runs are delayed.
 - Validate request batches and result packages against protocol shape rules.
-- Mark route state for cleanup if the agent exits while route remains installed.
+- Mark route state for cleanup if the agent exits while route state remains installed.
 - Receive one result package for the batch.
 - Match each result to the original local request.
 - Fail unsupported traffic quickly with a local error.
@@ -513,10 +554,10 @@ For structured operator playbooks, see:
 
 ## Manual Test Mode
 
-Manual fetch mode remains useful for testing without installing the route:
+Manual fetch mode remains useful for testing without enabling proxy integration:
 
 ```sh
-actionrelay fetch https://api.example.com/status
+actionrelay fetch https://api.github.com
 ```
 
 Use route lifecycle commands to maintain local route state:

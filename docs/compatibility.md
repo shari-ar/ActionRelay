@@ -18,9 +18,9 @@ request-batch protocol.
 Supported:
 
 - Standard HTTP proxy requests.
-- HTTPS request flow represented as bounded HTTP(S) request/response records.
+- Explicit HTTP requests and bounded HTTPS-origin responses that fit the batch model.
 - Browser and desktop app traffic that behaves like short-lived HTTP(S)
-  requests.
+  requests, provided it does not require CONNECT tunneling.
 
 Not supported:
 
