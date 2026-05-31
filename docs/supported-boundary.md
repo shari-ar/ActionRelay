@@ -4,8 +4,7 @@ This document is the definitive support boundary for the stable desktop release.
 
 ## Product Identity
 
-ActionRelay is a GitHub-native desktop HTTP(S) proxy relay. It is not a
-universal network tunnel.
+ActionRelay is a GitHub-native desktop HTTP(S) proxy relay. It is not a universal network tunnel.
 
 ## Supported Use Cases
 
