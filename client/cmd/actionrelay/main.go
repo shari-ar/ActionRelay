@@ -654,12 +654,13 @@ func runServe(args []string) error {
 }
 
 type statusOutput struct {
-	Timestamp      string       `json:"timestamp"`
-	RouteStatePath string       `json:"route_state_path"`
-	Route          route.State  `json:"route"`
-	Agent          statusAgent  `json:"agent"`
-	Policy         statusPolicy `json:"policy"`
-	Diagnostics    diagnostics  `json:"diagnostics"`
+	Timestamp      string         `json:"timestamp"`
+	RouteStatePath string         `json:"route_state_path"`
+	Route          route.State    `json:"route"`
+	Agent          statusAgent    `json:"agent"`
+	Policy         statusPolicy   `json:"policy"`
+	Diagnostics    diagnostics    `json:"diagnostics"`
+	Supportability supportability `json:"supportability"`
 }
 
 type statusAgent struct {
@@ -673,6 +674,15 @@ type statusAgent struct {
 type diagnostics struct {
 	Severity string   `json:"severity"`
 	Issues   []string `json:"issues"`
+}
+
+type supportability struct {
+	HealthClass       string   `json:"health_class"`
+	UptimeSeconds     int64    `json:"uptime_seconds,omitempty"`
+	FailureRatio      float64  `json:"failure_ratio,omitempty"`
+	RecentErrorCode   string   `json:"recent_error_code,omitempty"`
+	NeedsAttention    bool     `json:"needs_attention"`
+	RecommendedAction []string `json:"recommended_actions,omitempty"`
 }
 
 type statusPolicy struct {
@@ -762,6 +772,7 @@ func runStatus(args []string) error {
 		}
 	}
 	output.Diagnostics = buildDiagnostics(output)
+	output.Supportability = buildSupportability(output)
 
 	formatted, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
@@ -851,6 +862,70 @@ func buildDiagnostics(output statusOutput) diagnostics {
 		Severity: severity,
 		Issues:   issues,
 	}
+}
+
+func buildSupportability(output statusOutput) supportability {
+	now := time.Now().UTC()
+	result := supportability{
+		HealthClass: "healthy",
+	}
+
+	actions := make([]string, 0, 6)
+	runtime := output.Agent.Runtime
+	if runtime == nil {
+		result.HealthClass = "degraded"
+		result.NeedsAttention = true
+		result.RecommendedAction = []string{
+			"start_or_restart_service",
+			"run_actionrelay_status_again",
+		}
+		return result
+	}
+
+	if runtime.StartedAt != "" {
+		if startedAt, err := time.Parse(time.RFC3339, runtime.StartedAt); err == nil && now.After(startedAt) {
+			result.UptimeSeconds = int64(now.Sub(startedAt).Seconds())
+		}
+	}
+
+	totalFinished := runtime.TotalCompletedRequests + runtime.TotalFailedRequests
+	if totalFinished > 0 {
+		result.FailureRatio = float64(runtime.TotalFailedRequests) / float64(totalFinished)
+	}
+	result.RecentErrorCode = runtime.LastDispatchErrorCode
+
+	if !output.Agent.Reachable {
+		result.HealthClass = "unhealthy"
+		result.NeedsAttention = true
+		actions = append(actions, "check_serve_process", "verify_agent_listen_addr")
+	}
+	if runtime.LastDispatchErrorCode != "" {
+		result.NeedsAttention = true
+		actions = append(actions, "verify_github_token_and_workflow_access")
+		if result.HealthClass == "healthy" {
+			result.HealthClass = "degraded"
+		}
+	}
+	if runtime.LastResultAt != "" {
+		if lastResultAt, err := time.Parse(time.RFC3339, runtime.LastResultAt); err == nil && now.Sub(lastResultAt) > 15*time.Minute {
+			result.NeedsAttention = true
+			actions = append(actions, "run_fetch_smoke_test")
+			if result.HealthClass == "healthy" {
+				result.HealthClass = "degraded"
+			}
+		}
+	}
+	if runtime.TotalFailedRequests >= 20 && result.FailureRatio >= 0.30 {
+		result.NeedsAttention = true
+		actions = append(actions, "inspect_recovery_guide_and_recent_errors")
+		result.HealthClass = "unhealthy"
+	}
+
+	if len(actions) == 0 {
+		actions = append(actions, "continue_normal_operation")
+	}
+	result.RecommendedAction = actions
+	return result
 }
 
 func maxSeverity(current, next string) string {

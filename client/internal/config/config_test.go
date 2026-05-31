@@ -18,3 +18,33 @@ func TestValidateRejectsUnknownConfigVersion(t *testing.T) {
 		t.Fatal("expected validate to reject config_version=2")
 	}
 }
+
+func TestValidateAcceptsGitHubAPIBaseURL(t *testing.T) {
+	cfg := Default()
+	cfg.Repo = "owner/repo"
+	cfg.Workflow = "actionrelay.yml"
+	cfg.GitHubAPIBaseURL = "https://api.github.com"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected github api base url to be valid: %v", err)
+	}
+}
+
+func TestValidateRejectsNonGitHubAPIBaseURL(t *testing.T) {
+	cfg := Default()
+	cfg.Repo = "owner/repo"
+	cfg.Workflow = "actionrelay.yml"
+	cfg.GitHubAPIBaseURL = "https://example.com"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validate to reject non-github api base url")
+	}
+}
+
+func TestValidateRejectsNonHTTPSGitHubAPIBaseURL(t *testing.T) {
+	cfg := Default()
+	cfg.Repo = "owner/repo"
+	cfg.Workflow = "actionrelay.yml"
+	cfg.GitHubAPIBaseURL = "http://api.github.com"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validate to reject non-https github api base url")
+	}
+}

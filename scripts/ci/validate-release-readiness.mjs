@@ -45,7 +45,9 @@ async function validateReleaseWorkflow() {
   assert(release.includes("Build cross-platform binaries and checksums"), "release.yml: missing build assets step");
   assert(release.includes("gh release upload"), "release.yml: missing release asset upload");
   assert(release.includes("dist/*.tar.gz"), "release.yml: missing tar.gz artifacts");
+  assert(!release.includes("dist/*.zip"), "release.yml: zip assets must not be required");
   assert(release.includes("dist/SHA256SUMS.txt"), "release.yml: missing SHA256SUMS artifact");
+  assert(release.includes("dist/RELEASE_MANIFEST.txt"), "release.yml: missing release manifest artifact");
 }
 
 async function validateProtocolInvariants() {
@@ -81,12 +83,15 @@ async function validateConfigContract() {
   assert(configSource.includes("ConfigVersion"), "config.go: missing ConfigVersion field");
   assert(configSource.includes("ConfigVersion:          1"), "config.go: default config version must be 1");
   assert(configSource.includes("config_version must be 1"), "config.go: must enforce config version contract");
+  assert(configSource.includes("validateGitHubAPIBaseURL"), "config.go: must enforce GitHub API base URL invariant");
+  assert(configSource.includes("must be github.com or a github.com subdomain"), "config.go: missing GitHub domain guardrail message");
 }
 
 async function validateDocsCoverage() {
   const usage = await readFile(path.join(repoRoot, "docs", "usage.md"), "utf8");
   const release = await readFile(path.join(repoRoot, "docs", "release.md"), "utf8");
   const limitations = await readFile(path.join(repoRoot, "docs", "limitations.md"), "utf8");
+  const supportedBoundary = await readFile(path.join(repoRoot, "docs", "supported-boundary.md"), "utf8");
   const docsIndex = await readFile(path.join(repoRoot, "docs", "README.md"), "utf8");
 
   assert(usage.includes("actionrelay status"), "docs/usage.md: missing status usage guidance");
@@ -94,9 +99,12 @@ async function validateDocsCoverage() {
   assert(release.includes("Release Flow"), "docs/release.md: missing release flow section");
   assert(release.includes("CI Coverage"), "docs/release.md: missing CI coverage section");
   assert(docsIndex.includes("`limitations.md`"), "docs/README.md: missing limitations index entry");
+  assert(docsIndex.includes("`supported-boundary.md`"), "docs/README.md: missing supported-boundary index entry");
   assert(limitations.includes("CONNECT tunneling is not supported"), "docs/limitations.md: missing CONNECT limitation");
   assert(limitations.includes("GitHub Actions only"), "docs/limitations.md: missing GitHub Actions invariant");
   assert(limitations.includes("GitHub-domain constrained"), "docs/limitations.md: missing GitHub-domain invariant");
+  assert(supportedBoundary.includes("not a universal network tunnel"), "docs/supported-boundary.md: missing non-goal tunnel boundary");
+  assert(supportedBoundary.includes("GitHub-native desktop HTTP(S) proxy relay"), "docs/supported-boundary.md: missing definitive product identity");
 }
 
 async function main() {

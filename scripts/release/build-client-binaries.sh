@@ -26,12 +26,8 @@ for target in "${targets[@]}"; do
   read -r GOOS GOARCH <<<"${target}"
 
   binary_name="actionrelay"
-  archive_ext="tar.gz"
   if [[ "${GOOS}" == "windows" ]]; then
     binary_name="actionrelay.exe"
-    if command -v zip >/dev/null 2>&1; then
-      archive_ext="zip"
-    fi
   fi
 
   staging_dir="${DIST_DIR}/actionrelay_${VERSION}_${GOOS}_${GOARCH}"
@@ -45,14 +41,7 @@ for target in "${targets[@]}"; do
 
   cp "${ROOT_DIR}/README.md" "${staging_dir}/README.md"
 
-  if [[ "${archive_ext}" == "zip" ]]; then
-    (
-      cd "${staging_dir}"
-      zip -q -9 "${DIST_DIR}/actionrelay_${VERSION}_${GOOS}_${GOARCH}.zip" "${binary_name}" "README.md"
-    )
-  else
-    tar -C "${staging_dir}" -czf "${DIST_DIR}/actionrelay_${VERSION}_${GOOS}_${GOARCH}.tar.gz" "${binary_name}" "README.md"
-  fi
+  tar -C "${staging_dir}" -czf "${DIST_DIR}/actionrelay_${VERSION}_${GOOS}_${GOARCH}.tar.gz" "${binary_name}" "README.md"
 
   rm -rf "${staging_dir}"
 done
@@ -65,5 +54,12 @@ done
     shasum -a 256 actionrelay_* > SHA256SUMS.txt
   fi
 )
+
+cat > "${DIST_DIR}/RELEASE_MANIFEST.txt" <<EOF
+version=${VERSION}
+assets_format=tar.gz
+platforms=linux/amd64,linux/arm64,darwin/amd64,darwin/arm64,windows/amd64,windows/arm64
+checksum_file=SHA256SUMS.txt
+EOF
 
 echo "release assets written to ${DIST_DIR}"

@@ -29,8 +29,29 @@ actionrelay status --config .actionrelay/config.json
    - `agent.reachable=true`
    - `diagnostics.severity=ok` during healthy operation
    - no unexpected `diagnostics.issues`
+   - `supportability.health_class=healthy`
+   - `supportability.needs_attention=false`
 5. Validate proxy install/uninstall lifecycle commands on that OS.
 6. Validate recovery procedures from `recovery.md`.
+
+## Release Asset Validation Checklist
+
+For the release candidate tag, confirm all expected assets are present:
+
+- `actionrelay_<version>_linux_amd64.tar.gz`
+- `actionrelay_<version>_linux_arm64.tar.gz`
+- `actionrelay_<version>_darwin_amd64.tar.gz`
+- `actionrelay_<version>_darwin_arm64.tar.gz`
+- `actionrelay_<version>_windows_amd64.tar.gz`
+- `actionrelay_<version>_windows_arm64.tar.gz`
+- `SHA256SUMS.txt`
+- `RELEASE_MANIFEST.txt`
+
+Then verify checksums locally:
+
+```sh
+sha256sum -c SHA256SUMS.txt
+```
 
 ## Invariant Validation Checklist
 
@@ -38,6 +59,8 @@ actionrelay status --config .actionrelay/config.json
   - `actionrelay.request_batch.v1`
   - `actionrelay.result_package.v1`
 - `config_version=1` contract is enforced.
+- `github_api_base_url` remains `https://api.github.com` (or an explicit
+  `*.github.com` API hostname when GitHub changes require it).
 - Documentation keeps explicit product limitations and supported boundaries.
 - Release workflow still builds and uploads expected assets.
 
@@ -46,5 +69,6 @@ actionrelay status --config .actionrelay/config.json
 `v1.0` candidate is ready only when:
 
 - All CI jobs pass.
+- Release workflow has produced and uploaded the full asset set.
 - This checklist has been completed for Windows, macOS, and Linux.
 - No undocumented behavior gaps remain between implementation and docs.

@@ -27,6 +27,10 @@ ActionRelay behaves like a constrained whole-device network route, not a general
 TCP/UDP tunnel. Traffic must be converted into bounded request records before it
 can be batched and relayed.
 
+ActionRelay is positioned as a GitHub-native desktop HTTP(S) proxy relay, not a
+universal tunnel. The definitive support boundary is documented in
+`docs/supported-boundary.md`.
+
 ## Core Flow
 
 1. The local agent captures eligible whole-device requests.
@@ -103,11 +107,20 @@ actionrelay fetch https://api.example.com/status
 - `docs/architecture.md` explains the whole-device route and batch design.
 - `docs/protocol.md` defines batch request and result package envelopes.
 - `docs/usage.md` describes local route setup and operation.
+- `docs/compatibility.md` describes supported platforms and traffic model.
+- `docs/supported-boundary.md` defines stable boundary and non-goals.
+- `docs/limitations.md` lists explicit unsupported behavior.
 - `docs/performance.md` defines resource budgets and latency tradeoffs.
 - `docs/security.md` covers local routing, sensitive traffic, and guardrails.
 - `docs/development.md` outlines contributor conventions.
 - `docs/release.md` describes CI and versioned release automation.
 - `docs/roadmap.md` tracks implementation phases.
+
+## Release Assets
+
+Stable release assets are published as `.tar.gz` archives for all supported
+desktop targets, plus `SHA256SUMS.txt` and `RELEASE_MANIFEST.txt` for
+verification.
 
 ## Project Status
 

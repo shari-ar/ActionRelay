@@ -54,6 +54,30 @@ Recovery:
 3. Verify `actionrelay-results` branch exists and is writable by workflow.
 4. Restart `serve` and re-test with `fetch`.
 
+## Long-Running Degradation
+
+Symptoms:
+
+- `supportability.health_class` is `degraded` or `unhealthy`.
+- `supportability.needs_attention=true`.
+- `supportability.recommended_actions` includes recovery steps.
+
+Recovery:
+
+1. Run and save a fresh status output:
+
+```sh
+actionrelay status --config .actionrelay/config.json
+```
+
+2. Execute recommended actions in order:
+   - `check_serve_process` / `verify_agent_listen_addr`
+   - `verify_github_token_and_workflow_access`
+   - `run_fetch_smoke_test`
+3. If degradation persists for 15+ minutes, restart `serve`.
+4. If still unresolved, rotate token, re-check workflow permissions, and
+   collect logs + status output for escalation.
+
 ## Route Cleanup Required
 
 Symptoms:

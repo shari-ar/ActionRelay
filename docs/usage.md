@@ -12,6 +12,12 @@ as a batch, and returned as one result package.
 - Local ActionRelay Go route agent.
 - Permission to install or configure a local route on the device.
 
+Boundary reminder:
+
+- ActionRelay is a GitHub-native desktop HTTP(S) proxy relay.
+- It is not a universal VPN or arbitrary packet tunnel.
+- See `supported-boundary.md` and `limitations.md` before deployment.
+
 ## First-Time Client Setup
 
 The steps below assume the ActionRelay workflow is already present in the target
@@ -31,10 +37,8 @@ Every user needs to:
 Open the repository on GitHub, open `Releases`, then open the latest release.
 Under `Assets`, download the archive that matches the local machine.
 
-- Windows x64: `actionrelay_<version>_windows_amd64.zip` or
-  `actionrelay_<version>_windows_amd64.tar.gz`
-- Windows ARM64: `actionrelay_<version>_windows_arm64.zip` or
-  `actionrelay_<version>_windows_arm64.tar.gz`
+- Windows x64: `actionrelay_<version>_windows_amd64.tar.gz`
+- Windows ARM64: `actionrelay_<version>_windows_arm64.tar.gz`
 - macOS Intel: `actionrelay_<version>_darwin_amd64.tar.gz`
 - macOS Apple Silicon: `actionrelay_<version>_darwin_arm64.tar.gz`
 - Linux x64: `actionrelay_<version>_linux_amd64.tar.gz`
@@ -52,9 +56,8 @@ If the user is not sure which architecture to choose:
    - `windows_amd64` for almost all Intel/AMD Windows PCs
    - `windows_arm64` only for Windows on ARM devices
 2. Create a folder such as `C:\ActionRelay`.
-3. Extract the downloaded archive into `C:\ActionRelay`.
-   - For `.zip`, right-click the file and choose `Extract All`
-   - For `.tar.gz`, use Windows built-in extraction if available, or 7-Zip
+3. Extract the downloaded `.tar.gz` archive into `C:\ActionRelay`.
+   - Use Windows built-in extraction if available, or 7-Zip
 4. Confirm the extracted folder contains:
    - `actionrelay.exe`
    - `README.md`

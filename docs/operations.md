@@ -30,6 +30,20 @@ Review these status areas first:
 - `agent.runtime.queue_depth`: should stay well below queue capacity.
 - `agent.runtime.last_dispatch_error_code`: empty in healthy state.
 
+## Long-Running Stability Checks
+
+For continuously running deployments, perform this checklist at least once per
+shift (or every 4-8 hours):
+
+- `supportability.health_class`: should remain `healthy`.
+- `supportability.needs_attention`: should remain `false`.
+- `supportability.failure_ratio`: should remain below `0.30` over time.
+- `agent.runtime.last_result_at`: should refresh regularly during active use.
+- `agent.runtime.dispatch_in_flight`: should not stay `true` for multiple minutes.
+
+If any check fails repeatedly, use `docs/recovery.md` and capture one `status`
+output sample before restarting the service.
+
 ## Proxy Lifecycle
 
 Install system proxy integration:

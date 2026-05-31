@@ -24,6 +24,15 @@ Each artifact includes:
 - `README.md`
 
 A `SHA256SUMS.txt` file is generated for all archives.
+A `RELEASE_MANIFEST.txt` file is generated to describe release packaging shape.
+
+Stable release packaging format:
+
+- All platforms ship as `.tar.gz` archives (including Windows).
+- Release uploads include:
+  - `actionrelay_<version>_<goos>_<goarch>.tar.gz`
+  - `SHA256SUMS.txt`
+  - `RELEASE_MANIFEST.txt`
 
 ## CI Coverage
 
@@ -71,6 +80,7 @@ This gate verifies:
 - Operator guidance exists for operations, compatibility, and recovery.
 - Explicit product limitations remain documented and indexed.
 - Final pre-`v1.0` desktop validation checklist is documented and indexed.
+- Stable support boundary/non-goal documentation remains present and indexed.
 
 This keeps desktop stabilization changes within the GitHub-native architecture
 and helps catch regressions before tagging a release.

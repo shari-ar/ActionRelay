@@ -42,8 +42,8 @@ jobs:
           name: actionrelay-release-assets
           path: |
             dist/*.tar.gz
-            dist/*.zip
             dist/SHA256SUMS.txt
+            dist/RELEASE_MANIFEST.txt
           if-no-files-found: error
 
       - name: Upload assets to published GitHub release
@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          assets=(dist/*.tar.gz dist/*.zip dist/SHA256SUMS.txt)
+          assets=(dist/*.tar.gz dist/SHA256SUMS.txt dist/RELEASE_MANIFEST.txt)
           if [ "${#assets[@]}" -eq 0 ]; then
             echo "No release assets were generated under dist/"
             exit 1

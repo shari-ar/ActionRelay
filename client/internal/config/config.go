@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -192,6 +193,9 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.GitHubAPIBaseURL) == "" {
 		return errors.New("github_api_base_url is required")
 	}
+	if err := validateGitHubAPIBaseURL(c.GitHubAPIBaseURL); err != nil {
+		return err
+	}
 	if err := validateLoopbackListenAddr(c.AgentListenAddr); err != nil {
 		return err
 	}
@@ -273,4 +277,32 @@ func validateLoopbackListenAddr(listenAddr string) error {
 		return fmt.Errorf("agent_listen_addr host must be loopback-only")
 	}
 	return nil
+}
+
+func validateGitHubAPIBaseURL(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("github_api_base_url invalid: %w", err)
+	}
+	if parsed.Scheme != "https" {
+		return errors.New("github_api_base_url must use https")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return errors.New("github_api_base_url must include a hostname")
+	}
+	if !isGitHubHost(host) {
+		return fmt.Errorf("github_api_base_url host %q is not allowed; must be github.com or a github.com subdomain", host)
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return errors.New("github_api_base_url must not include a path")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("github_api_base_url must not include query or fragment")
+	}
+	return nil
+}
+
+func isGitHubHost(host string) bool {
+	return host == "github.com" || strings.HasSuffix(host, ".github.com")
 }
