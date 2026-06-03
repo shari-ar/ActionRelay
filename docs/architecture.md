@@ -55,6 +55,10 @@ The worker writes one result package per batch to the `actionrelay-results`
 branch under `results/<batch_id>.json`. The client fetches that file through
 the GitHub Contents API on `api.github.com`.
 
+Result retention is managed by a dedicated GitHub Actions cleanup workflow. By
+default, result files are kept for 24 hours and a scheduled cleanup run removes
+expired files every 6 hours.
+
 ## Flow
 
 ```text

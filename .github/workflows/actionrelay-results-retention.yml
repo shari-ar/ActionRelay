@@ -1,0 +1,60 @@
+name: ActionRelay Results Retention
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup-results:
+    name: Cleanup Expired Result Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout results branch
+        uses: actions/checkout@v4
+        with:
+          ref: actionrelay-results
+          fetch-depth: 0
+
+      - name: Remove result files older than 24h
+        run: |
+          set -euo pipefail
+          if [ ! -d results ]; then
+            echo "No results directory exists; nothing to clean"
+            exit 0
+          fi
+
+          cutoff_epoch="$(date -u -d '24 hours ago' +%s)"
+          deleted=0
+
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+
+            last_commit_epoch="$(git log -1 --format=%ct -- "$file" 2>/dev/null || true)"
+            if [ -z "$last_commit_epoch" ]; then
+              continue
+            fi
+
+            if [ "$last_commit_epoch" -lt "$cutoff_epoch" ]; then
+              rm -f -- "$file"
+              deleted=$((deleted + 1))
+            fi
+          done < <(find results -type f -name '*.json' | sort)
+
+          if [ "$deleted" -eq 0 ]; then
+            echo "No expired result files found"
+            exit 0
+          fi
+
+          if find results -type d -empty | grep -q .; then
+            find results -type d -empty -delete
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A results
+          git commit -m "actionrelay: prune result files older than 24h"
+          git push origin HEAD:actionrelay-results

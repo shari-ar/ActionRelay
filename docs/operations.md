@@ -86,3 +86,14 @@ actionrelay route uninstall --yes --config .actionrelay/config.json
    config version boundary.
 4. Restart `serve`.
 5. Re-run `status` and verify `diagnostics.severity=ok`.
+
+## Result Retention
+
+ActionRelay stores worker result files in the `actionrelay-results` branch.
+
+- Default retention: 24 hours.
+- Cleanup cadence: every 6 hours.
+- Cleanup mechanism: `.github/workflows/actionrelay-results-retention.yml`.
+
+This keeps result storage bounded while leaving a safe window for client polling
+and short-term troubleshooting.

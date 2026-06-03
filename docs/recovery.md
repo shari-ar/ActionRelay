@@ -94,6 +94,20 @@ actionrelay route uninstall --yes --config .actionrelay/config.json
 
 2. Confirm cleanup flags are cleared with `status`.
 
+## Result Storage Growth
+
+Symptoms:
+
+- The `actionrelay-results` branch keeps growing unexpectedly.
+
+Recovery:
+
+1. Verify the scheduled cleanup workflow is enabled:
+   - `.github/workflows/actionrelay-results-retention.yml`
+2. Confirm recent cleanup workflow runs are succeeding in GitHub Actions.
+3. If needed, run the cleanup workflow manually with `workflow_dispatch`.
+4. Confirm old files under `results/` are removed from `actionrelay-results`.
+
 ## Proxy Misconfiguration
 
 Symptoms:
