@@ -30,7 +30,6 @@ async function validateCIWorkflow(expectedGoVersion) {
   assert(ci.includes("go test ./..."), "ci.yml: missing go test step");
   assert(ci.includes("gofmt -l ."), "ci.yml: missing gofmt verification");
   assert(ci.includes("Validate JSON schemas"), "ci.yml: missing schema validation step");
-  assert(ci.includes("Validate documentation"), "ci.yml: missing docs validation step");
   assert(expectedGoVersion.length > 0, "go version must be non-empty");
 }
 

@@ -42,7 +42,6 @@ The CI workflow validates:
 - Go formatting (`gofmt`)
 - Worker script syntax and smoke behavior
 - Schema file structure and protocol constants
-- Documentation integrity checks
 
 ## Authentication Model
 
@@ -76,7 +75,6 @@ This gate verifies:
 - Client `go test ./...` and `gofmt` checks remain enforced in CI.
 - Release workflow still builds cross-platform assets and uploads checksums.
 - Protocol/schema invariants required by the desktop client remain unchanged.
-- Core release and diagnostics documentation coverage remains present.
 - Operator guidance exists for operations, compatibility, and recovery.
 - Explicit product limitations remain documented and indexed.
 - Final pre-`v1.0` desktop validation checklist is documented and indexed.

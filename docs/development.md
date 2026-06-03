@@ -46,7 +46,6 @@ GitHub Actions workflow `.github/workflows/ci.yml` validates:
 - Go formatting consistency via `gofmt`.
 - Worker syntax and smoke behavior checks.
 - Schema structure validation in `schemas/`.
-- Documentation integrity checks in `docs/`.
 
 ## Release Automation
 
