@@ -88,7 +88,7 @@ package containing all completed results and structured errors.
 Typical local workflow:
 
 ```sh
-actionrelay init --repo owner/repo --workflow actionrelay.yml
+actionrelay init --repo your-github-username/ActionRelay --workflow actionrelay.yml
 actionrelay proxy install --yes --config .actionrelay/config.json
 actionrelay serve --config .actionrelay/config.json
 actionrelay status --config .actionrelay/config.json

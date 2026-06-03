@@ -6,7 +6,9 @@ as a batch, and returned as one result package.
 
 ## Prerequisites
 
-- GitHub repository with the ActionRelay workflow.
+- Personal GitHub account for the user who will run ActionRelay.
+- User-owned fork of `github.com/shari-ar/ActionRelay`.
+- GitHub repository with the ActionRelay workflow in that user-owned fork.
 - GitHub Actions enabled.
 - GitHub token for workflow dispatch, run read, and results branch read.
 - Local ActionRelay Go client.
@@ -20,17 +22,72 @@ Boundary reminder:
 
 ## First-Time Client Setup
 
-The steps below assume the ActionRelay workflow is already present in the target
-GitHub repository and GitHub Actions is enabled for that repository.
+Each user must use their own GitHub account and their own fork of
+`github.com/shari-ar/ActionRelay`. ActionRelay consumes GitHub Actions and API
+quota from the account/repository that runs it, so users should not share a
+single repository if they want isolated usage and quota.
+
+The steps below assume the user has created their own fork and GitHub Actions is
+enabled for that fork.
 
 Every user needs to:
 
-1. Download the correct release asset for their operating system and CPU.
-2. Extract the archive into a local folder.
-3. Create a GitHub personal access token (PAT) with the required permissions.
-4. Set `ACTIONRELAY_GITHUB_TOKEN` on the machine that will run the client.
-5. Initialize ActionRelay against the repository that hosts the workflow.
-6. Run a manual fetch test before starting the local proxy agent.
+1. Sign in to their own GitHub account.
+2. Fork `github.com/shari-ar/ActionRelay` into their own GitHub account.
+3. Download the correct release asset for their operating system and CPU.
+4. Extract the archive into a local folder.
+5. Create a GitHub personal access token (PAT) in that same GitHub account.
+6. Set `ACTIONRELAY_GITHUB_TOKEN` on the machine that will run the client.
+7. Initialize ActionRelay against the user's fork repository.
+8. Run a manual fetch test before starting the local proxy agent.
+
+### Fork The Repository Into Your Own GitHub Account
+
+Every user should create their own fork before doing anything else.
+
+1. Open `https://github.com/shari-ar/ActionRelay` in a browser.
+2. Make sure you are signed in to your own GitHub account.
+3. Click the `Fork` button near the top-right of the GitHub page.
+4. If GitHub asks where to fork it, choose your personal account.
+5. Wait for GitHub to create the fork.
+6. After the fork is created, confirm the URL now looks like:
+   - `https://github.com/<your-github-username>/ActionRelay`
+7. Open the `Actions` tab in your fork.
+8. If GitHub shows a button such as `I understand my workflows, go ahead and enable them` or `Enable workflows`, click it.
+9. Keep the exact `owner/repo` value of your fork ready for setup. Example:
+   - `your-github-username/ActionRelay`
+
+From this point on, use your fork everywhere in ActionRelay setup commands.
+
+### Create A GitHub PAT Click-By-Click
+
+Create the token in the same GitHub account that owns the fork.
+
+1. Open `https://github.com` and sign in.
+2. Click your profile picture in the top-right corner.
+3. Click `Settings`.
+4. In the left sidebar, scroll down and click `Developer settings`.
+5. In the `Developer settings` sidebar, click `Personal access tokens`.
+6. Click `Fine-grained tokens`.
+7. Click `Generate new token`.
+8. If GitHub asks for password confirmation or two-factor confirmation, complete it.
+9. In the `Token name` field, enter a clear name such as:
+   - `ActionRelay Desktop`
+10. In the expiration section, choose the expiration you want.
+    - Recommended: use a limited expiration and rotate the token later.
+11. In the resource owner/account section, select your own GitHub account.
+12. In repository access, choose `Only select repositories`.
+13. In the repository picker, select your fork:
+    - `your-github-username/ActionRelay`
+14. In repository permissions, set:
+    - `Actions` -> `Read and write`
+    - `Contents` -> `Read-only`
+    - `Metadata` -> `Read-only`
+15. Leave unrelated permissions unselected unless you have a specific reason.
+16. Scroll to the bottom and click `Generate token`.
+17. GitHub will show the token value once. Copy it immediately.
+18. Save it temporarily in a secure place until you put it into the environment variable on your computer.
+19. If you lose it, do not try to recover it. Create a new token instead.
 
 ### Pick The Correct Release Asset
 
