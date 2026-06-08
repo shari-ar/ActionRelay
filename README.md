@@ -14,7 +14,7 @@ result package to the client.
 - A local Go proxy/relay agent for eligible HTTP(S) requests.
 - A one-second batching loop that sends work only when requests are pending.
 - A GitHub REST API control plane for upload, dispatch, polling, and results.
-- A Node.js 20 worker that processes request batches with strict limits.
+- A Node.js 24 worker that processes request batches with strict limits.
 - A compact JSON protocol for request batches and result packages.
 
 ## What It Is Not
@@ -73,7 +73,7 @@ package containing all completed results and structured errors.
 ```text
 .
 |-- client/                 # Go client, local proxy agent, and CLI controls
-|-- worker/                 # Node.js 20 batch worker
+|-- worker/                 # Node.js 24 batch worker
 |-- schemas/                # JSON schemas for batches and results
 |-- .github/workflows/      # GitHub Actions workflows
 |-- tests/                  # Unit, integration, and route-flow tests

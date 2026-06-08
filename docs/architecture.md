@@ -41,12 +41,15 @@ The queue groups requests by time and budget. A batch should be capped by:
 ### GitHub REST API
 
 GitHub is the control plane for batch submission, workflow dispatch, run status,
-and result package download. The client must handle API rate limits and eventual
-consistency.
+and result package download. The client must handle API rate limits, eventual
+consistency, and server-time synchronization. On startup of GitHub communication,
+the client reads GitHub's `Date` header, estimates the current server clock,
+and uses that synchronized server time for later comparisons with GitHub
+workflow timestamps.
 
 ### GitHub Actions Worker
 
-The Node.js 20 worker receives one batch package, validates it, processes the
+The Node.js 24 worker receives one batch package, validates it, processes the
 contained requests with strict concurrency, writes one result package, and exits.
 
 ### Result Package Store

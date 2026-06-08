@@ -26,6 +26,10 @@ actionrelay status --config .actionrelay/config.json
 
 ## Backpressure Or Delayed Runs
 
+ActionRelay no longer uses a fixed client/server skew allowance. Instead, the
+client first synchronizes to the GitHub server clock and then compares GitHub
+timestamps using that server-time model.
+
 Symptoms:
 
 - `diagnostics.issues` contains `backpressure_active` or `RUN_DELAYED`.

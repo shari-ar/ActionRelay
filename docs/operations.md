@@ -22,6 +22,10 @@ actionrelay status --config .actionrelay/config.json
 
 ## Operator Checks
 
+ActionRelay synchronizes against GitHub server time before relying on GitHub
+workflow timestamps. This avoids depending on the local machine clock matching
+GitHub exactly.
+
 Review these status areas first:
 
 - `agent.reachable`: must be `true`.

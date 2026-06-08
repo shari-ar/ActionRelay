@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"actionrelay/client/internal/config"
@@ -20,7 +21,6 @@ import (
 )
 
 const gitHubAPIVersion = "2022-11-28"
-const runDiscoveryClockSkewAllowance = 5 * time.Minute
 
 type Dispatcher struct {
 	httpClient           *http.Client
@@ -33,6 +33,10 @@ type Dispatcher struct {
 	pollInterval         time.Duration
 	runStartTimeout      time.Duration
 	runCompletionTimeout time.Duration
+
+	mu                sync.Mutex
+	serverClockOffset time.Duration
+	serverClockSynced bool
 }
 
 func NewDispatcher(cfg config.Config, token string) (*Dispatcher, error) {
@@ -61,13 +65,18 @@ func (d *Dispatcher) ProcessBatch(ctx context.Context, batch protocol.RequestBat
 	if err := protocol.ValidateRequestBatch(batch); err != nil {
 		return protocol.ResultPackage{}, fmt.Errorf("request batch validation failed: %w", err)
 	}
-	dispatchedAt := time.Now().UTC()
-	log.Printf("actionrelay: github dispatch begin batch_id=%s workflow=%s ref=%s", batch.BatchID, d.workflow, d.workflowRef)
-	if err := d.dispatchBatch(ctx, batch); err != nil {
+	if err := d.syncServerClock(ctx); err != nil {
 		return protocol.ResultPackage{}, err
 	}
-	log.Printf("actionrelay: github dispatch accepted batch_id=%s", batch.BatchID)
-	runID, err := d.waitForRun(ctx, batch.BatchID, dispatchedAt.Add(-runDiscoveryClockSkewAllowance))
+
+	log.Printf("actionrelay: github dispatch begin batch_id=%s workflow=%s ref=%s", batch.BatchID, d.workflow, d.workflowRef)
+	dispatchedAtServer, err := d.dispatchBatch(ctx, batch)
+	if err != nil {
+		return protocol.ResultPackage{}, err
+	}
+	log.Printf("actionrelay: github dispatch accepted batch_id=%s server_time=%s", batch.BatchID, dispatchedAtServer.Format(time.RFC3339))
+
+	runID, err := d.waitForRun(ctx, batch.BatchID, normalizeGitHubTimestamp(dispatchedAtServer))
 	if err != nil {
 		return protocol.ResultPackage{}, err
 	}
@@ -93,10 +102,10 @@ func (d *Dispatcher) ProcessBatch(ctx context.Context, batch protocol.RequestBat
 	return pkg, nil
 }
 
-func (d *Dispatcher) dispatchBatch(ctx context.Context, batch protocol.RequestBatch) error {
+func (d *Dispatcher) dispatchBatch(ctx context.Context, batch protocol.RequestBatch) (time.Time, error) {
 	serializedBatch, err := json.Marshal(batch)
 	if err != nil {
-		return fmt.Errorf("serialize batch: %w", err)
+		return time.Time{}, fmt.Errorf("serialize batch: %w", err)
 	}
 
 	body := map[string]any{
@@ -111,25 +120,32 @@ func (d *Dispatcher) dispatchBatch(ctx context.Context, batch protocol.RequestBa
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return fmt.Errorf("serialize dispatch payload: %w", err)
+		return time.Time{}, fmt.Errorf("serialize dispatch payload: %w", err)
 	}
 
 	endpoint := fmt.Sprintf("%s/repos/%s/%s/actions/workflows/%s/dispatches", d.baseURL, d.owner, d.repo, url.PathEscape(d.workflow))
 	req, err := d.newJSONRequest(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
 
+	localStart := time.Now().UTC()
 	resp, err := d.httpClient.Do(req)
+	localEnd := time.Now().UTC()
 	if err != nil {
-		return fmt.Errorf("dispatch batch request: %w", err)
+		return time.Time{}, fmt.Errorf("dispatch batch request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	serverAcceptedAt, ok := d.updateServerClockFromDateHeader(resp.Header.Get("Date"), localStart, localEnd)
 	if resp.StatusCode != http.StatusNoContent {
 		message, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("dispatch batch failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(message)))
+		return time.Time{}, fmt.Errorf("dispatch batch failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(message)))
 	}
-	return nil
+	if !ok {
+		serverAcceptedAt = d.serverNow()
+	}
+	return serverAcceptedAt, nil
 }
 
 type workflowRunsResponse struct {
@@ -172,11 +188,14 @@ func (d *Dispatcher) findRunForBatch(ctx context.Context, batchID string, earlie
 	if err != nil {
 		return 0, false, err
 	}
+	localStart := time.Now().UTC()
 	resp, err := d.httpClient.Do(req)
+	localEnd := time.Now().UTC()
 	if err != nil {
 		return 0, false, fmt.Errorf("list workflow runs: %w", err)
 	}
 	defer resp.Body.Close()
+	d.updateServerClockFromDateHeader(resp.Header.Get("Date"), localStart, localEnd)
 	if resp.StatusCode != http.StatusOK {
 		message, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return 0, false, fmt.Errorf("list workflow runs failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(message)))
@@ -193,10 +212,18 @@ func (d *Dispatcher) findRunForBatch(ctx context.Context, batchID string, earlie
 		if err != nil {
 			continue
 		}
+		createdAt = normalizeGitHubTimestamp(createdAt)
 		if createdAt.Before(earliestCreatedAt) {
 			continue
 		}
-		log.Printf("actionrelay: github run candidate matched batch_id=%s run_id=%d created_at=%s status=%s", batchID, run.ID, run.CreatedAt, run.Status)
+		log.Printf(
+			"actionrelay: github run candidate matched batch_id=%s run_id=%d created_at_server=%s created_at_local=%s status=%s",
+			batchID,
+			run.ID,
+			run.CreatedAt,
+			d.serverTimeToLocal(createdAt).Format(time.RFC3339),
+			run.Status,
+		)
 		return run.ID, true, nil
 	}
 	return 0, false, nil
@@ -233,11 +260,14 @@ func (d *Dispatcher) getRun(ctx context.Context, runID int64) (workflowRun, erro
 	if err != nil {
 		return workflowRun{}, err
 	}
+	localStart := time.Now().UTC()
 	resp, err := d.httpClient.Do(req)
+	localEnd := time.Now().UTC()
 	if err != nil {
 		return workflowRun{}, fmt.Errorf("get run: %w", err)
 	}
 	defer resp.Body.Close()
+	d.updateServerClockFromDateHeader(resp.Header.Get("Date"), localStart, localEnd)
 	if resp.StatusCode != http.StatusOK {
 		message, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return workflowRun{}, fmt.Errorf("get run failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(message)))
@@ -288,11 +318,14 @@ func (d *Dispatcher) downloadResultPackage(ctx context.Context, batchID string) 
 	if err != nil {
 		return protocol.ResultPackage{}, false, err
 	}
+	localStart := time.Now().UTC()
 	resp, err := d.httpClient.Do(req)
+	localEnd := time.Now().UTC()
 	if err != nil {
 		return protocol.ResultPackage{}, false, fmt.Errorf("download result package: %w", err)
 	}
 	defer resp.Body.Close()
+	d.updateServerClockFromDateHeader(resp.Header.Get("Date"), localStart, localEnd)
 	if resp.StatusCode == http.StatusNotFound {
 		return protocol.ResultPackage{}, false, nil
 	}
@@ -323,6 +356,73 @@ func (d *Dispatcher) downloadResultPackage(ctx context.Context, batchID string) 
 		return protocol.ResultPackage{}, false, fmt.Errorf("decode result package: %w", err)
 	}
 	return result, true, nil
+}
+
+func (d *Dispatcher) syncServerClock(ctx context.Context) error {
+	if d.hasServerClockSync() {
+		return nil
+	}
+	endpoint := strings.TrimRight(d.baseURL, "/") + "/rate_limit"
+	req, err := d.newJSONRequest(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	localStart := time.Now().UTC()
+	resp, err := d.httpClient.Do(req)
+	localEnd := time.Now().UTC()
+	if err != nil {
+		return fmt.Errorf("server clock sync request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		message, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("SERVER_CLOCK_SYNC_FAILED: status %d: %s", resp.StatusCode, strings.TrimSpace(string(message)))
+	}
+	if _, ok := d.updateServerClockFromDateHeader(resp.Header.Get("Date"), localStart, localEnd); !ok {
+		return errors.New("SERVER_CLOCK_SYNC_FAILED: GitHub response did not include a valid Date header")
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	return nil
+}
+
+func (d *Dispatcher) updateServerClockFromDateHeader(dateHeader string, localStart, localEnd time.Time) (time.Time, bool) {
+	serverTime, err := http.ParseTime(strings.TrimSpace(dateHeader))
+	if err != nil {
+		return time.Time{}, false
+	}
+	serverTime = serverTime.UTC()
+	midpoint := localStart.Add(localEnd.Sub(localStart) / 2).UTC()
+
+	d.mu.Lock()
+	d.serverClockOffset = serverTime.Sub(midpoint)
+	d.serverClockSynced = true
+	d.mu.Unlock()
+
+	return serverTime, true
+}
+
+func (d *Dispatcher) hasServerClockSync() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.serverClockSynced
+}
+
+func (d *Dispatcher) serverNow() time.Time {
+	d.mu.Lock()
+	offset := d.serverClockOffset
+	d.mu.Unlock()
+	return time.Now().UTC().Add(offset)
+}
+
+func (d *Dispatcher) serverTimeToLocal(serverTime time.Time) time.Time {
+	d.mu.Lock()
+	offset := d.serverClockOffset
+	d.mu.Unlock()
+	return serverTime.UTC().Add(-offset)
+}
+
+func normalizeGitHubTimestamp(timestamp time.Time) time.Time {
+	return timestamp.UTC().Truncate(time.Second)
 }
 
 func (d *Dispatcher) newJSONRequest(ctx context.Context, method, endpoint string, body io.Reader) (*http.Request, error) {

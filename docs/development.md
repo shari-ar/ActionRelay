@@ -7,7 +7,7 @@ work before spending GitHub Actions capacity.
 
 ```text
 client/                 Go route agent, batching, and CLI controls
-worker/                 Node.js 20 batch worker
+worker/                 Node.js 24 batch worker
 schemas/                JSON schemas
 protocol/               Protocol examples and compatibility notes
 .github/workflows/      Workflow definitions
@@ -46,6 +46,35 @@ GitHub Actions workflow `.github/workflows/ci.yml` validates:
 - Go formatting consistency via `gofmt`.
 - Worker syntax and smoke behavior checks.
 - Schema structure validation in `schemas/`.
+
+## Version Maintenance
+
+Developers working on ActionRelay should keep the versions of the tools used by
+the project up to date as part of normal maintenance work.
+
+Review and update these version groups deliberately:
+
+- Go / Node versions
+  - `client/go.mod`
+  - `worker/package.json`
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/actionrelay.yml`
+  - `.github/workflows/release.yml`
+- GitHub Actions versions
+  - `actions/checkout`
+  - `actions/setup-go`
+  - `actions/setup-node`
+  - `actions/github-script`
+  - `actions/upload-artifact`
+- Pinned Runtime / API Versions
+  - GitHub REST API version in `client/internal/githubapi/dispatcher.go`
+
+When changing any of these versions:
+
+- Keep the code, workflows, and technical documentation in sync.
+- Re-run the relevant CI and release-readiness checks.
+- Verify that any pinned protocol or API version remains compatible with the
+  current implementation.
 
 ## Release Automation
 
