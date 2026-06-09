@@ -5,7 +5,7 @@ Go client accepts eligible proxy traffic, places pending requests into a small
 queue, sends work to the server side once per second, and receives compact
 batched results back.
 
-The server side is a GitHub Actions based worker/control plane. It can receive a
+The server side is a GitHub Actions-based worker/control plane. It can receive a
 batch containing more than one client request, process the batch, and return one
 result package to the client.
 
@@ -85,6 +85,14 @@ package containing all completed results and structured errors.
 
 ## Intended Usage
 
+Each user should run ActionRelay from:
+
+- their own GitHub account
+- their own fork of `github.com/shari-ar/ActionRelay`
+
+because GitHub Actions and API usage should consume that user's own
+account/repository quota.
+
 Typical local workflow:
 
 ```sh
@@ -94,6 +102,15 @@ actionrelay serve --config .actionrelay/config.json
 actionrelay status --config .actionrelay/config.json
 actionrelay fetch https://api.github.com
 ```
+
+Before the commands above:
+
+1. Fork `github.com/shari-ar/ActionRelay` into your own GitHub account.
+2. Enable GitHub Actions in your fork.
+3. Create a fine-grained GitHub PAT in that same account.
+4. Set `ACTIONRELAY_GITHUB_TOKEN` on the machine that will run the client.
+
+See `docs/usage.md` for the full step-by-step setup guide.
 
 Manual fetch mode is available for testing:
 
@@ -106,7 +123,7 @@ actionrelay fetch https://api.github.com
 - `docs/README.md` is the documentation index.
 - `docs/architecture.md` explains the local proxy agent and batch design.
 - `docs/protocol.md` defines batch request and result package envelopes.
-- `docs/usage.md` describes local route setup and operation.
+- `docs/usage.md` describes setup, token configuration, and local operation.
 - `docs/compatibility.md` describes supported platforms and traffic model.
 - `docs/supported-boundary.md` defines stable boundary and non-goals.
 - `docs/limitations.md` lists explicit unsupported behavior.
