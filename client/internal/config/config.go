@@ -184,8 +184,14 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Repo) == "" {
 		return errors.New("repo is required")
 	}
+	if _, _, err := c.RepoOwnerAndName(); err != nil {
+		return err
+	}
 	if strings.TrimSpace(c.Workflow) == "" {
 		return errors.New("workflow is required")
+	}
+	if strings.TrimSpace(c.WorkflowRef) == "" {
+		return errors.New("workflow_ref is required")
 	}
 	if strings.TrimSpace(c.GitHubTokenEnv) == "" {
 		return errors.New("github_token_env is required")
@@ -196,11 +202,11 @@ func (c Config) Validate() error {
 	if err := validateGitHubAPIBaseURL(c.GitHubAPIBaseURL); err != nil {
 		return err
 	}
-	if err := validateLoopbackListenAddr(c.AgentListenAddr); err != nil {
+	if err := validateLoopbackListenAddr("agent_listen_addr", c.AgentListenAddr); err != nil {
 		return err
 	}
-	if err := validateLoopbackListenAddr(c.ProxyListenAddr); err != nil {
-		return fmt.Errorf("proxy_listen_addr invalid: %w", err)
+	if err := validateLoopbackListenAddr("proxy_listen_addr", c.ProxyListenAddr); err != nil {
+		return err
 	}
 	if c.BatchIntervalMS < minBatchIntervalMS || c.BatchIntervalMS > maxBatchIntervalMS {
 		return fmt.Errorf("batch_interval_ms must be between %d and %d", minBatchIntervalMS, maxBatchIntervalMS)
@@ -258,23 +264,30 @@ func (c Config) Validate() error {
 }
 
 func (c *Config) normalize() {
+	c.Repo = strings.TrimSpace(c.Repo)
+	c.Workflow = strings.TrimSpace(c.Workflow)
+	c.WorkflowRef = strings.TrimSpace(c.WorkflowRef)
+	c.GitHubTokenEnv = strings.TrimSpace(c.GitHubTokenEnv)
+	c.GitHubAPIBaseURL = strings.TrimSpace(c.GitHubAPIBaseURL)
+	c.AgentListenAddr = strings.TrimSpace(c.AgentListenAddr)
+	c.ProxyListenAddr = strings.TrimSpace(c.ProxyListenAddr)
 	c.ReliabilityMode = strings.ToLower(strings.TrimSpace(c.ReliabilityMode))
 }
 
-func validateLoopbackListenAddr(listenAddr string) error {
+func validateLoopbackListenAddr(fieldName, listenAddr string) error {
 	host, _, err := net.SplitHostPort(strings.TrimSpace(listenAddr))
 	if err != nil {
-		return fmt.Errorf("agent_listen_addr must be host:port")
+		return fmt.Errorf("%s must be host:port", fieldName)
 	}
 	if strings.EqualFold(host, "localhost") {
 		return nil
 	}
 	ipAddr := net.ParseIP(host)
 	if ipAddr == nil {
-		return fmt.Errorf("agent_listen_addr host must be localhost or a loopback IP")
+		return fmt.Errorf("%s host must be localhost or a loopback IP", fieldName)
 	}
 	if !ipAddr.IsLoopback() {
-		return fmt.Errorf("agent_listen_addr host must be loopback-only")
+		return fmt.Errorf("%s host must be loopback-only", fieldName)
 	}
 	return nil
 }
@@ -293,6 +306,9 @@ func validateGitHubAPIBaseURL(raw string) error {
 	}
 	if !isGitHubHost(host) {
 		return fmt.Errorf("github_api_base_url host %q is not allowed; must be github.com or a github.com subdomain", host)
+	}
+	if parsed.Port() != "" {
+		return errors.New("github_api_base_url must not include an explicit port")
 	}
 	if parsed.Path != "" && parsed.Path != "/" {
 		return errors.New("github_api_base_url must not include a path")

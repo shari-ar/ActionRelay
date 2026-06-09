@@ -117,3 +117,36 @@ func TestLinuxInstallUninstallSetsBypass(t *testing.T) {
 		t.Fatalf("Uninstall failed on linux: %v", err)
 	}
 }
+
+func TestLinuxUninstallClearsBypassEnvWhenNoState(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux-specific test")
+	}
+	tempDir := t.TempDir()
+	statePath := filepath.Join(tempDir, "proxy-platform-state.json")
+	if err := os.Setenv(stateEnvVar, statePath); err != nil {
+		t.Fatalf("set env failed: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Unsetenv(stateEnvVar) })
+
+	if err := os.Setenv("no_proxy", "localhost,127.0.0.1"); err != nil {
+		t.Fatalf("set no_proxy failed: %v", err)
+	}
+	if err := os.Setenv("NO_PROXY", "localhost,127.0.0.1"); err != nil {
+		t.Fatalf("set NO_PROXY failed: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Unsetenv("no_proxy")
+		_ = os.Unsetenv("NO_PROXY")
+	})
+
+	if err := uninstallLinuxProxy(); err != nil {
+		t.Fatalf("uninstallLinuxProxy failed: %v", err)
+	}
+	if got := os.Getenv("no_proxy"); got != "" {
+		t.Fatalf("expected no_proxy to be cleared, got %q", got)
+	}
+	if got := os.Getenv("NO_PROXY"); got != "" {
+		t.Fatalf("expected NO_PROXY to be cleared, got %q", got)
+	}
+}

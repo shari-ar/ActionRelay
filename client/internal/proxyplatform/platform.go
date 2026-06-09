@@ -276,8 +276,10 @@ func uninstallLinuxProxy() error {
 	}
 	_ = os.Unsetenv("http_proxy")
 	_ = os.Unsetenv("https_proxy")
+	_ = os.Unsetenv("no_proxy")
 	_ = os.Unsetenv("HTTP_PROXY")
 	_ = os.Unsetenv("HTTPS_PROXY")
+	_ = os.Unsetenv("NO_PROXY")
 	return nil
 }
 

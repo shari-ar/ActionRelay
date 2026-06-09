@@ -260,8 +260,6 @@ func runProxyStatus(args []string) error {
 		return err
 	}
 	platformRuntime := proxyplatform.Status()
-	supported := platformRuntime.Supported
-	supportedError := platformRuntime.SupportedError
 	output := map[string]any{
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),
 		"route_state_path": statePath,
@@ -269,8 +267,8 @@ func runProxyStatus(args []string) error {
 			"installed":       state.ProxyInstalled,
 			"listen_addr":     state.ProxyListenAddr,
 			"platform":        state.Platform,
-			"supported":       supported,
-			"supported_error": supportedError,
+			"supported":       platformRuntime.Supported,
+			"supported_error": platformRuntime.SupportedError,
 			"last_action":     state.LastAction,
 		},
 		"platform_runtime": platformRuntime,
